@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import {
   createPreferenceStore,
   extractPreference,
@@ -23,6 +24,32 @@ interface ParsedArgs {
   flags: Map<string, string[]>;
   configPath: string | undefined;
   help: boolean;
+}
+
+interface ReplayInput {
+  queueDir: string;
+  limit: number;
+  persist: boolean;
+  store: PreferenceStore | null;
+  config: ReturnType<typeof loadConfig>["config"];
+}
+
+interface ReplayFileResult {
+  file: string;
+  status: string;
+  persisted: boolean;
+  preferenceId?: string;
+  error?: string;
+}
+
+interface ReplayReport {
+  queueDir: string;
+  total: number;
+  extracted: number;
+  skipped: number;
+  persisted: number;
+  failed: number;
+  files: ReplayFileResult[];
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -53,12 +80,37 @@ async function main(argv: string[]): Promise<number> {
       localModel: loadResult.config.localModel,
     });
     const persist = args.flags.has("persist");
-    const persisted = persistLearnResult(result, persist ? createPreferenceStore(loadResult.config.store) : null);
-    printLearnResult(result, {
-      persisted: persisted !== null,
-      ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
-    });
+    const store = persist ? createPreferenceStore(loadResult.config.store) : null;
+    try {
+      const persisted = persistLearnResult(result, store);
+      printLearnResult(result, {
+        persisted: persisted !== null,
+        ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
+      });
+    } finally {
+      store?.close();
+    }
     return learnExitCode(result);
+  }
+
+  if (args.command === "replay") {
+    const queueDir = flagOne(args, "queue-dir") ?? loadResult.config.learning.queuePath;
+    const limit = parseNumberFlag(flagOne(args, "limit"), 100);
+    const persist = args.flags.has("persist");
+    const store = persist ? createPreferenceStore(loadResult.config.store) : null;
+    try {
+      const report = await replayEvents({
+        queueDir,
+        limit,
+        persist,
+        store,
+        config: loadResult.config,
+      });
+      printReplayReport(report);
+      return report.failed === 0 ? 0 : 1;
+    } finally {
+      store?.close();
+    }
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -286,6 +338,77 @@ function readJsonFile(path: string): unknown {
   }
 }
 
+async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
+  const files = queueFiles(input.queueDir, input.limit);
+  const report: ReplayReport = {
+    queueDir: input.queueDir,
+    total: files.length,
+    extracted: 0,
+    skipped: 0,
+    persisted: 0,
+    failed: 0,
+    files: [],
+  };
+  const model = new OllamaModel(input.config.localModel);
+
+  for (const file of files) {
+    try {
+      const result = await extractPreference(readJsonFile(file), model, {
+        learning: input.config.learning,
+        privacy: input.config.privacy,
+        localModel: input.config.localModel,
+      });
+      const persisted = persistLearnResult(result, input.persist ? input.store : null);
+
+      if (result.ok) {
+        report.extracted += 1;
+      } else if (learnExitCode(result) === 0) {
+        report.skipped += 1;
+      } else {
+        report.failed += 1;
+      }
+      if (persisted !== null) {
+        report.persisted += 1;
+      }
+
+      report.files.push({
+        file,
+        status: result.status,
+        persisted: persisted !== null,
+        ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
+        ...(result.ok || result.errors.length === 0 ? {} : { error: result.errors[0] }),
+      });
+    } catch (error) {
+      report.failed += 1;
+      report.files.push({
+        file,
+        status: "failed",
+        persisted: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return report;
+}
+
+function queueFiles(queueDir: string, limit: number): string[] {
+  const boundedLimit = Math.max(0, Math.min(Math.floor(limit), 500));
+  if (boundedLimit === 0) {
+    return [];
+  }
+  if (!existsSync(queueDir)) {
+    return [];
+  }
+
+  return readdirSync(queueDir)
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => join(queueDir, entry))
+    .filter((path) => statSync(path).isFile())
+    .sort()
+    .slice(0, boundedLimit);
+}
+
 function learnExitCode(result: PreferenceExtractionResult): number {
   if (result.ok) {
     return 0;
@@ -301,50 +424,46 @@ function persistLearnResult(
     return null;
   }
 
-  try {
-    if (!result.ok || !result.confidence.shouldStore || result.extraction.statement === null) {
-      return null;
-    }
-
-    const rememberInput: RememberPreferenceInput = {
-      statement: result.extraction.statement,
-      scopeType: result.extraction.scopeType,
-      category: result.extraction.category,
-      tags: result.extraction.tags,
-      confidence: result.confidence.confidence,
-      status: result.confidence.status,
-      source: "prefkit-learn",
-      evidence: {
-        sessionId: result.event.sessionId ?? null,
-        agent: result.event.agent,
-        summary: result.extraction.rationale,
-        sourceType: result.extraction.evidenceType,
-        polarity: result.extraction.polarity,
-        weight: result.confidence.evidenceWeight,
-        metadata: {
-          model: result.model,
-          eventType: result.event.eventType,
-          promptTokenEstimate: result.promptTokenEstimate,
-          redactions: result.redactions.map((finding) => finding.kind),
-          usage: result.usage ?? {},
-        },
-      },
-      metadata: {
-        needsConfirmation: result.confidence.needsConfirmation,
-        contradictions: result.extraction.contradictions,
-        confidenceReasons: result.confidence.reasons.map((reason) => reason.code),
-        signalReasons: result.prefilter.reasons.map((reason) => reason.code),
-      },
-    };
-
-    if (result.extraction.scopeValue !== null) {
-      rememberInput.scopeValue = result.extraction.scopeValue;
-    }
-
-    return store.remember(rememberInput);
-  } finally {
-    store.close();
+  if (!result.ok || !result.confidence.shouldStore || result.extraction.statement === null) {
+    return null;
   }
+
+  const rememberInput: RememberPreferenceInput = {
+    statement: result.extraction.statement,
+    scopeType: result.extraction.scopeType,
+    category: result.extraction.category,
+    tags: result.extraction.tags,
+    confidence: result.confidence.confidence,
+    status: result.confidence.status,
+    source: "prefkit-learn",
+    evidence: {
+      sessionId: result.event.sessionId ?? null,
+      agent: result.event.agent,
+      summary: result.extraction.rationale,
+      sourceType: result.extraction.evidenceType,
+      polarity: result.extraction.polarity,
+      weight: result.confidence.evidenceWeight,
+      metadata: {
+        model: result.model,
+        eventType: result.event.eventType,
+        promptTokenEstimate: result.promptTokenEstimate,
+        redactions: result.redactions.map((finding) => finding.kind),
+        usage: result.usage ?? {},
+      },
+    },
+    metadata: {
+      needsConfirmation: result.confidence.needsConfirmation,
+      contradictions: result.extraction.contradictions,
+      confidenceReasons: result.confidence.reasons.map((reason) => reason.code),
+      signalReasons: result.prefilter.reasons.map((reason) => reason.code),
+    },
+  };
+
+  if (result.extraction.scopeValue !== null) {
+    rememberInput.scopeValue = result.extraction.scopeValue;
+  }
+
+  return store.remember(rememberInput);
 }
 
 function printLearnResult(
@@ -356,7 +475,7 @@ function printLearnResult(
     console.log(`model=${result.model}`);
   }
   if (result.promptTokenEstimate !== undefined) {
-    console.log(`promptTokens≈${result.promptTokenEstimate}`);
+    console.log(`promptTokens~=${result.promptTokenEstimate}`);
   }
   if (result.prefilter !== undefined) {
     console.log(
@@ -398,6 +517,19 @@ function printLearnResult(
   }
   for (const reason of result.confidence.reasons) {
     console.log(`- confidence ${reason.code} weight=${reason.weight}`);
+  }
+}
+
+function printReplayReport(report: ReplayReport): void {
+  console.log(`PrefKit replay: ${report.failed === 0 ? "ok" : "needs attention"}`);
+  console.log(`queueDir=${report.queueDir}`);
+  console.log(
+    `total=${report.total} extracted=${report.extracted} skipped=${report.skipped} persisted=${report.persisted} failed=${report.failed}`,
+  );
+  for (const file of report.files) {
+    const persisted = file.preferenceId === undefined ? String(file.persisted) : `${file.persisted}:${file.preferenceId}`;
+    const error = file.error === undefined ? "" : ` error=${file.error}`;
+    console.log(`- ${file.file} status=${file.status} persisted=${persisted}${error}`);
   }
 }
 
@@ -457,6 +589,7 @@ Usage:
   prefkit export --format markdown
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]
+  prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
   prefkit doctor [--config .prefkit.json]
 `);
 }
