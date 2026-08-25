@@ -24,6 +24,7 @@ export {
 } from "./learner/schemas.js";
 export { scoreLearnerEvent } from "./learner/prefilter.js";
 export { calculatePreferenceConfidence } from "./learner/confidence.js";
+export { extractPreference } from "./learner/extractor.js";
 export type {
   ContradictionAction,
   ContradictionKind,
@@ -46,8 +47,24 @@ export type {
   ConfidenceOptions,
   ConfidenceReason,
 } from "./learner/confidence.js";
+export type {
+  PreferenceExtractionOptions,
+  PreferenceExtractionResult,
+  PreferenceExtractionSkipped,
+  PreferenceExtractionStatus,
+  PreferenceExtractionSuccess,
+} from "./learner/extractor.js";
 export { OllamaModel } from "./model/ollama.js";
-export type { ModelHealth, PrefKitModel } from "./model/types.js";
+export type {
+  ModelHealth,
+  ModelJsonMessage,
+  ModelJsonMessageRole,
+  ModelJsonRequest,
+  ModelJsonResult,
+  ModelUsage,
+  PrefKitJsonModel,
+  PrefKitModel,
+} from "./model/types.js";
 export { redactLearnerEvent, redactText } from "./redaction/redact.js";
 export type {
   RedactedLearnerEvent,
