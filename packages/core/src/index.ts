@@ -12,6 +12,26 @@ export type {
 } from "./config/types.js";
 export { runDoctor } from "./doctor.js";
 export type { DoctorCheck, DoctorReport } from "./doctor.js";
+export {
+  contradictionActionSchema,
+  contradictionKindSchema,
+  extractorJsonSchema,
+  extractorOutputSchema,
+  learnerEventSchema,
+  learnerEventTypeSchema,
+  validateExtractorOutput,
+  validateLearnerEvent,
+} from "./learner/schemas.js";
+export type {
+  ContradictionAction,
+  ContradictionKind,
+  ExtractorOutput,
+  LearnerEvent,
+  LearnerEventType,
+  ValidationFailure,
+  ValidationResult,
+  ValidationSuccess,
+} from "./learner/schemas.js";
 export { OllamaModel } from "./model/ollama.js";
 export type { ModelHealth, PrefKitModel } from "./model/types.js";
 export { renderPreferenceContext, estimateTokens } from "./formatting/context.js";

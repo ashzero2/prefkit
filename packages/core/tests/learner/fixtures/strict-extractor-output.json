@@ -1,0 +1,12 @@
+{
+  "shouldLearn": false,
+  "statement": null,
+  "scopeType": "global",
+  "scopeValue": null,
+  "category": "tooling",
+  "tags": [],
+  "evidenceType": "MODEL_EXTRACTED",
+  "polarity": "neutral",
+  "rationale": "No durable preference is present.",
+  "unexpected": "not allowed"
+}

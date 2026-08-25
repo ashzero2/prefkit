@@ -1,0 +1,11 @@
+{
+  "shouldLearn": true,
+  "statement": null,
+  "scopeType": "global",
+  "scopeValue": null,
+  "category": "tooling",
+  "tags": ["javascript"],
+  "evidenceType": "MODEL_EXTRACTED",
+  "polarity": "positive",
+  "rationale": "Invalid because shouldLearn=true requires a statement."
+}

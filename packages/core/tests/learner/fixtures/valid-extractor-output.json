@@ -1,0 +1,14 @@
+{
+  "shouldLearn": true,
+  "statement": "Prefer pnpm for JavaScript package management in JS projects.",
+  "scopeType": "repository",
+  "scopeValue": "/repo",
+  "category": "tooling",
+  "tags": ["javascript", "package-manager", "pnpm"],
+  "evidenceType": "MODEL_EXTRACTED",
+  "polarity": "positive",
+  "proposedStatus": "active",
+  "needsConfirmation": false,
+  "rationale": "The user explicitly corrected npm to pnpm and generalized it to JS projects.",
+  "contradictions": []
+}
