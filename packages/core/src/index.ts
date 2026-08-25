@@ -14,6 +14,14 @@ export { runDoctor } from "./doctor.js";
 export type { DoctorCheck, DoctorReport } from "./doctor.js";
 export { OllamaModel } from "./model/ollama.js";
 export type { ModelHealth, PrefKitModel } from "./model/types.js";
+export { renderPreferenceContext, estimateTokens } from "./formatting/context.js";
+export { ftsQuery, lexicalOverlap, queryTerms } from "./retrieval/query.js";
+export type {
+  ContextRenderOptions,
+  PreferenceSearchOptions,
+  PreferenceSearchResult,
+  RenderedContext,
+} from "./retrieval/types.js";
 export { createPreferenceStore, SqlitePreferenceStore, storeExists } from "./store/sqlite.js";
 export type {
   EvidencePolarity,

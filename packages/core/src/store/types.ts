@@ -1,3 +1,5 @@
+import type { PreferenceSearchOptions, PreferenceSearchResult } from "../retrieval/types.js";
+
 export type PreferenceStatus = "candidate" | "active" | "pinned" | "suppressed" | "superseded" | "rejected";
 export type ScopeType = "global" | "repository" | "path" | "task" | "agent";
 export type EvidencePolarity = "positive" | "negative" | "neutral";
@@ -72,6 +74,7 @@ export interface PreferenceStore {
   close(): void;
   remember(input: RememberPreferenceInput): PreferenceWithEvidence;
   list(options?: ListPreferencesOptions): PreferenceRecord[];
+  search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;

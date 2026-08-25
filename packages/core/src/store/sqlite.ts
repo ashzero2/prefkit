@@ -4,6 +4,8 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type { Database as DatabaseHandle } from "better-sqlite3";
 import type { StoreConfig } from "../config/types.js";
+import { ftsQuery, lexicalOverlap } from "../retrieval/query.js";
+import type { PreferenceSearchOptions, PreferenceSearchResult } from "../retrieval/types.js";
 import { migrations } from "./migrations.js";
 import type {
   EvidencePolarity,
@@ -115,6 +117,40 @@ export class SqlitePreferenceStore implements PreferenceStore {
 
     const preferences = rows.map(rowToPreference);
     return options.includeInactive === true ? preferences : preferences.filter((pref) => activeStatuses.has(pref.status));
+  }
+
+  search(options: PreferenceSearchOptions): PreferenceSearchResult[] {
+    this.init();
+
+    const limit = boundedLimit(options.limit);
+    const minConfidence = Math.max(0, Math.min(1, options.minConfidence ?? 0));
+    const query = ftsQuery(options.prompt);
+    const ftsRows = query === null ? [] : this.searchFts(query, minConfidence, limit * 3);
+    const candidateRows = ftsRows.length > 0 ? ftsRows : this.searchLexicalCandidates(minConfidence, 500);
+    const prompt = options.prompt;
+
+    return candidateRows
+      .map((row) => {
+        const preference = rowToPreference(row);
+        const scope = scopeMatch(preference, options);
+        if (!scope.matches) {
+          return null;
+        }
+
+        const overlap = lexicalOverlap(prompt, searchableText(preference));
+        if (ftsRows.length === 0 && overlap === 0) {
+          return null;
+        }
+
+        return {
+          preference,
+          score: scorePreference(preference, scope.weight, overlap, rankField(row)),
+          reasons: resultReasons(preference, scope.reason, overlap, rankField(row)),
+        };
+      })
+      .filter((result): result is PreferenceSearchResult => result !== null)
+      .sort((left, right) => right.score - left.score || right.preference.updatedAt.localeCompare(left.preference.updatedAt))
+      .slice(0, limit);
   }
 
   get(id: string): PreferenceWithEvidence | null {
@@ -249,6 +285,39 @@ export class SqlitePreferenceStore implements PreferenceStore {
       .all(preferenceId) as Row[]).map(rowToEvidence);
   }
 
+  private searchFts(query: string, minConfidence: number, limit: number): Row[] {
+    try {
+      return this.db
+        .prepare(
+          `SELECT p.*, preferences_fts.rank AS fts_rank
+           FROM preferences_fts
+           JOIN preferences p ON preferences_fts.rowid = p.rowid
+           WHERE preferences_fts MATCH ?
+             AND p.status IN ('candidate', 'active', 'pinned')
+             AND p.confidence >= ?
+           ORDER BY preferences_fts.rank
+           LIMIT ?`,
+        )
+        .all(query, minConfidence, limit) as Row[];
+    } catch {
+      return [];
+    }
+  }
+
+  private searchLexicalCandidates(minConfidence: number, limit: number): Row[] {
+    return this.db
+      .prepare(
+        `SELECT *
+         FROM preferences
+         WHERE status IN ('candidate', 'active', 'pinned')
+           AND confidence >= ?
+         ORDER BY CASE status WHEN 'pinned' THEN 0 WHEN 'active' THEN 1 ELSE 2 END,
+                  updated_at DESC
+         LIMIT ?`,
+      )
+      .all(minConfidence, limit) as Row[];
+  }
+
   private updateStatus(id: string, status: PreferenceStatus): PreferenceRecord | null {
     this.init();
 
@@ -378,4 +447,88 @@ function clampConfidence(value: number): number {
 
 function boundedLimit(value: number | undefined): number {
   return Math.max(1, Math.min(value ?? 100, 500));
+}
+
+interface ScopeMatch {
+  matches: boolean;
+  weight: number;
+  reason: string;
+}
+
+function scopeMatch(preference: PreferenceRecord, options: PreferenceSearchOptions): ScopeMatch {
+  switch (preference.scopeType) {
+    case "global":
+      return { matches: true, weight: 0.2, reason: "global" };
+    case "agent":
+      return {
+        matches: preference.scopeValue === null || preference.scopeValue === options.agent,
+        weight: 0.35,
+        reason: "agent",
+      };
+    case "task":
+      return {
+        matches:
+          preference.scopeValue !== null && options.sessionId !== undefined && preference.scopeValue === options.sessionId,
+        weight: 0.45,
+        reason: "task",
+      };
+    case "repository":
+      return {
+        matches: pathWithin(options.cwd, preference.scopeValue) || pathWithin(options.path, preference.scopeValue),
+        weight: 0.4,
+        reason: "repository",
+      };
+    case "path":
+      return {
+        matches: pathWithin(options.path, preference.scopeValue) || pathWithin(options.cwd, preference.scopeValue),
+        weight: 0.45,
+        reason: "path",
+      };
+  }
+}
+
+function pathWithin(value: string | undefined, scopeValue: string | null): boolean {
+  if (scopeValue === null) {
+    return false;
+  }
+  if (value === undefined) {
+    return false;
+  }
+  return value === scopeValue || value.startsWith(`${scopeValue.replace(/\/+$/u, "")}/`);
+}
+
+function scorePreference(
+  preference: PreferenceRecord,
+  scopeWeight: number,
+  overlap: number,
+  rank: number | null,
+): number {
+  const statusWeight = preference.status === "pinned" ? 0.5 : preference.status === "active" ? 0.25 : 0.1;
+  const rankWeight = rank === null ? 0 : Math.max(0, 0.25 - Math.min(0.25, Math.abs(rank)));
+  return preference.confidence + statusWeight + scopeWeight + overlap * 0.15 + rankWeight;
+}
+
+function resultReasons(
+  preference: PreferenceRecord,
+  scopeReason: string,
+  overlap: number,
+  rank: number | null,
+): string[] {
+  const reasons = [scopeReason, preference.status];
+  if (overlap > 0) {
+    reasons.push(`${overlap} prompt term${overlap === 1 ? "" : "s"}`);
+  }
+  if (rank !== null) {
+    reasons.push("fts");
+  }
+  return reasons;
+}
+
+function searchableText(preference: PreferenceRecord): string {
+  return [preference.statement, preference.category, ...preference.tags].join(" ");
+}
+
+function rankField(row: Row): number | null {
+  const value = row.fts_rank;
+  return typeof value === "number" ? value : null;
 }

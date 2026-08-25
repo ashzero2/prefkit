@@ -2,9 +2,11 @@
 import {
   createPreferenceStore,
   loadConfig,
+  renderPreferenceContext,
   runDoctor,
   type ListPreferencesOptions,
   type PreferenceRecord,
+  type PreferenceSearchOptions,
   type PreferenceStatus,
   type RememberPreferenceInput,
   type ScopeType,
@@ -111,6 +113,38 @@ async function main(argv: string[]): Promise<number> {
           throw new Error("Only markdown export is supported in Phase 1.");
         }
         process.stdout.write(store.exportMarkdown());
+        return 0;
+      }
+      case "context": {
+        const prompt = flagOne(args, "prompt") ?? args.positionals.join(" ");
+        const trimmedPrompt = prompt.trim();
+        if (trimmedPrompt.length === 0) {
+          throw new Error("context requires --prompt or prompt text.");
+        }
+        const searchOptions: PreferenceSearchOptions = {
+          prompt: trimmedPrompt,
+          cwd: flagOne(args, "cwd") ?? process.cwd(),
+          limit: parseNumberFlag(flagOne(args, "limit"), loadResult.config.injection.maxRules),
+          minConfidence: parseNumberFlag(flagOne(args, "min-confidence"), loadResult.config.injection.minConfidence),
+        };
+        const searchPath = flagOne(args, "path");
+        if (searchPath !== undefined) {
+          searchOptions.path = searchPath;
+        }
+        const searchAgent = flagOne(args, "agent");
+        if (searchAgent !== undefined) {
+          searchOptions.agent = searchAgent;
+        }
+        const searchSession = flagOne(args, "session");
+        if (searchSession !== undefined) {
+          searchOptions.sessionId = searchSession;
+        }
+        const results = store.search(searchOptions);
+        const rendered = renderPreferenceContext(results, {
+          injection: loadResult.config.injection,
+          includeWhy: args.flags.has("why"),
+        });
+        process.stdout.write(rendered.text);
         return 0;
       }
       default:
@@ -272,6 +306,7 @@ Usage:
   prefkit pin <id>
   prefkit forget <id>
   prefkit export --format markdown
+  prefkit context --prompt "I need to name an app"
   prefkit doctor [--config .prefkit.json]
 `);
 }
