@@ -23,6 +23,7 @@ export {
   validateLearnerEvent,
 } from "./learner/schemas.js";
 export { scoreLearnerEvent } from "./learner/prefilter.js";
+export { calculatePreferenceConfidence } from "./learner/confidence.js";
 export type {
   ContradictionAction,
   ContradictionKind,
@@ -39,6 +40,12 @@ export type {
   LearningSignalReason,
   LearningSignalSource,
 } from "./learner/prefilter.js";
+export type {
+  ConfidenceDecision,
+  ConfidenceInput,
+  ConfidenceOptions,
+  ConfidenceReason,
+} from "./learner/confidence.js";
 export { OllamaModel } from "./model/ollama.js";
 export type { ModelHealth, PrefKitModel } from "./model/types.js";
 export { redactLearnerEvent, redactText } from "./redaction/redact.js";
