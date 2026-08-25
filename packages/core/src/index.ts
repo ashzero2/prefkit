@@ -34,6 +34,14 @@ export type {
 } from "./learner/schemas.js";
 export { OllamaModel } from "./model/ollama.js";
 export type { ModelHealth, PrefKitModel } from "./model/types.js";
+export { redactLearnerEvent, redactText } from "./redaction/redact.js";
+export type {
+  RedactedLearnerEvent,
+  RedactedText,
+  RedactionFinding,
+  RedactionKind,
+  RedactionOptions,
+} from "./redaction/types.js";
 export { renderPreferenceContext, estimateTokens } from "./formatting/context.js";
 export { ftsQuery, lexicalOverlap, queryTerms } from "./retrieval/query.js";
 export type {
