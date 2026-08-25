@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build and package output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Test/tool caches
+.vite/
+.vitest/
+.turbo/
+.cache/
+
+# Local environment and PrefKit runtime config
+.env
+.env.*
+!.env.example
+.prefkit.json
+!.prefkit.example.json
+
+# Local databases and SQLite sidecars
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Planning scratch files
+plans/

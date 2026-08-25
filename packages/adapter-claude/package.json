@@ -1,0 +1,9 @@
+{
+  "name": "@prefkit/adapter-claude",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@prefkit/core": "workspace:*"
+  }
+}

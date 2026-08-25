@@ -1,0 +1,20 @@
+{
+  "name": "prefkit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local-first preference memory and context injection for coding agents.",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prefkit": "tsx packages/cli/src/main.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^7.0.0",
+    "vitest": "^4.0.0"
+  }
+}

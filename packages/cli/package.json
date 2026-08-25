@@ -1,0 +1,12 @@
+{
+  "name": "@prefkit/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "prefkit": "./src/main.ts"
+  },
+  "dependencies": {
+    "@prefkit/core": "workspace:*"
+  }
+}
