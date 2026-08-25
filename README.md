@@ -1,6 +1,6 @@
 # PrefKit
 
-PrefKit is a local-first preference memory layer for coding agents. The Phase 0 scaffold includes strict TypeScript packages, configuration loading, local model health checks, and a small CLI doctor command.
+PrefKit is a local-first preference memory layer for coding agents. It stores explicit user preferences in SQLite, keeps provenance, and will later inject bounded context into Claude Code, Codex, OpenCode, and MCP-capable tools.
 
 ## Development
 
@@ -22,4 +22,4 @@ ollama pull qwen3:4b
 PREFKIT_OLLAMA_MODEL=qwen3:4b pnpm prefkit doctor
 ```
 
-If the model is not running, `prefkit doctor` should fail cleanly while showing the storage/config checks that did run.
+If the model is not running, `prefkit doctor` should fail cleanly while storage commands continue to work.
