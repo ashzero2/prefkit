@@ -1,10 +1,14 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import {
   createPreferenceStore,
+  extractPreference,
   loadConfig,
+  OllamaModel,
   renderPreferenceContext,
   runDoctor,
   type ListPreferencesOptions,
+  type PreferenceExtractionResult,
   type PreferenceRecord,
   type PreferenceSearchOptions,
   type PreferenceStatus,
@@ -34,6 +38,21 @@ async function main(argv: string[]): Promise<number> {
     const report = await runDoctor(loadResult);
     printDoctor(report);
     return report.ok ? 0 : 1;
+  }
+
+  if (args.command === "learn") {
+    const eventFile = flagOne(args, "event-file");
+    if (eventFile === undefined) {
+      throw new Error("learn requires --event-file path.json.");
+    }
+
+    const result = await extractPreference(readJsonFile(eventFile), new OllamaModel(loadResult.config.localModel), {
+      learning: loadResult.config.learning,
+      privacy: loadResult.config.privacy,
+      localModel: loadResult.config.localModel,
+    });
+    printLearnResult(result, { persisted: false });
+    return learnExitCode(result);
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -252,6 +271,70 @@ function parseNumberFlag(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function readJsonFile(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read JSON event file ${path}: ${message}`);
+  }
+}
+
+function learnExitCode(result: PreferenceExtractionResult): number {
+  if (result.ok) {
+    return 0;
+  }
+  return result.status === "learning_skipped" || result.status === "input_too_large" ? 0 : 1;
+}
+
+function printLearnResult(result: PreferenceExtractionResult, options: { persisted: boolean }): void {
+  console.log(`PrefKit learn: ${result.status}`);
+  if (result.model !== undefined) {
+    console.log(`model=${result.model}`);
+  }
+  if (result.promptTokenEstimate !== undefined) {
+    console.log(`promptTokens≈${result.promptTokenEstimate}`);
+  }
+  if (result.prefilter !== undefined) {
+    console.log(
+      `signalScore=${result.prefilter.score}/${result.prefilter.threshold} extract=${result.prefilter.shouldExtract}`,
+    );
+    for (const reason of result.prefilter.reasons) {
+      console.log(`- signal ${reason.code} weight=${reason.weight}`);
+    }
+  }
+  if ((result.redactions?.length ?? 0) > 0) {
+    console.log(`redactions=${result.redactions?.map((finding) => finding.kind).join(", ")}`);
+  }
+
+  if (!result.ok) {
+    for (const error of result.errors) {
+      console.log(`error=${error}`);
+    }
+    return;
+  }
+
+  console.log(`statement=${result.extraction.statement ?? "none"}`);
+  console.log(
+    `scope=${result.extraction.scopeType}${result.extraction.scopeValue === null ? "" : `:${result.extraction.scopeValue}`}`,
+  );
+  console.log(`category=${result.extraction.category}`);
+  console.log(`tags=${result.extraction.tags.length === 0 ? "none" : result.extraction.tags.join(", ")}`);
+  console.log(`status=${result.confidence.status}`);
+  console.log(`confidence=${result.confidence.confidence.toFixed(2)}`);
+  console.log(`evidenceWeight=${result.confidence.evidenceWeight}`);
+  console.log(`needsConfirmation=${result.confidence.needsConfirmation}`);
+  console.log(`persisted=${options.persisted}`);
+  if (result.usage !== undefined) {
+    console.log(
+      `usage=input:${result.usage.inputTokens ?? "unknown"} output:${result.usage.outputTokens ?? "unknown"}`,
+    );
+  }
+  for (const reason of result.confidence.reasons) {
+    console.log(`- confidence ${reason.code} weight=${reason.weight}`);
+  }
+}
+
 function printDoctor(report: Awaited<ReturnType<typeof runDoctor>>): void {
   console.log(`PrefKit doctor: ${report.ok ? "ok" : "needs attention"}`);
   for (const check of report.checks) {
@@ -307,6 +390,7 @@ Usage:
   prefkit forget <id>
   prefkit export --format markdown
   prefkit context --prompt "I need to name an app"
+  prefkit learn --event-file event.json
   prefkit doctor [--config .prefkit.json]
 `);
 }
