@@ -12,6 +12,7 @@ import {
   type PreferenceRecord,
   type PreferenceSearchOptions,
   type PreferenceStatus,
+  type PreferenceStore,
   type RememberPreferenceInput,
   type ScopeType,
 } from "@prefkit/core";
@@ -51,7 +52,12 @@ async function main(argv: string[]): Promise<number> {
       privacy: loadResult.config.privacy,
       localModel: loadResult.config.localModel,
     });
-    printLearnResult(result, { persisted: false });
+    const persist = args.flags.has("persist");
+    const persisted = persistLearnResult(result, persist ? createPreferenceStore(loadResult.config.store) : null);
+    printLearnResult(result, {
+      persisted: persisted !== null,
+      ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
+    });
     return learnExitCode(result);
   }
 
@@ -287,7 +293,64 @@ function learnExitCode(result: PreferenceExtractionResult): number {
   return result.status === "learning_skipped" || result.status === "input_too_large" ? 0 : 1;
 }
 
-function printLearnResult(result: PreferenceExtractionResult, options: { persisted: boolean }): void {
+function persistLearnResult(
+  result: PreferenceExtractionResult,
+  store: PreferenceStore | null,
+): ReturnType<PreferenceStore["remember"]> | null {
+  if (store === null) {
+    return null;
+  }
+
+  try {
+    if (!result.ok || !result.confidence.shouldStore || result.extraction.statement === null) {
+      return null;
+    }
+
+    const rememberInput: RememberPreferenceInput = {
+      statement: result.extraction.statement,
+      scopeType: result.extraction.scopeType,
+      category: result.extraction.category,
+      tags: result.extraction.tags,
+      confidence: result.confidence.confidence,
+      status: result.confidence.status,
+      source: "prefkit-learn",
+      evidence: {
+        sessionId: result.event.sessionId ?? null,
+        agent: result.event.agent,
+        summary: result.extraction.rationale,
+        sourceType: result.extraction.evidenceType,
+        polarity: result.extraction.polarity,
+        weight: result.confidence.evidenceWeight,
+        metadata: {
+          model: result.model,
+          eventType: result.event.eventType,
+          promptTokenEstimate: result.promptTokenEstimate,
+          redactions: result.redactions.map((finding) => finding.kind),
+          usage: result.usage ?? {},
+        },
+      },
+      metadata: {
+        needsConfirmation: result.confidence.needsConfirmation,
+        contradictions: result.extraction.contradictions,
+        confidenceReasons: result.confidence.reasons.map((reason) => reason.code),
+        signalReasons: result.prefilter.reasons.map((reason) => reason.code),
+      },
+    };
+
+    if (result.extraction.scopeValue !== null) {
+      rememberInput.scopeValue = result.extraction.scopeValue;
+    }
+
+    return store.remember(rememberInput);
+  } finally {
+    store.close();
+  }
+}
+
+function printLearnResult(
+  result: PreferenceExtractionResult,
+  options: { persisted: boolean; preferenceId?: string },
+): void {
   console.log(`PrefKit learn: ${result.status}`);
   if (result.model !== undefined) {
     console.log(`model=${result.model}`);
@@ -325,6 +388,9 @@ function printLearnResult(result: PreferenceExtractionResult, options: { persist
   console.log(`evidenceWeight=${result.confidence.evidenceWeight}`);
   console.log(`needsConfirmation=${result.confidence.needsConfirmation}`);
   console.log(`persisted=${options.persisted}`);
+  if (options.preferenceId !== undefined) {
+    console.log(`preferenceId=${options.preferenceId}`);
+  }
   if (result.usage !== undefined) {
     console.log(
       `usage=input:${result.usage.inputTokens ?? "unknown"} output:${result.usage.outputTokens ?? "unknown"}`,
@@ -390,7 +456,7 @@ Usage:
   prefkit forget <id>
   prefkit export --format markdown
   prefkit context --prompt "I need to name an app"
-  prefkit learn --event-file event.json
+  prefkit learn --event-file event.json [--persist]
   prefkit doctor [--config .prefkit.json]
 `);
 }
