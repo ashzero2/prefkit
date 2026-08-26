@@ -1,4 +1,5 @@
 import { injectOpenCodePreferenceContext } from "./context.js";
+import { queueOpenCodeLearnerEvent } from "./queue.js";
 import type { OpenCodeAdapterOptions, OpenCodePluginContext } from "./types.js";
 
 const plugin = {
@@ -17,12 +18,23 @@ const plugin = {
       } catch (error) {
         console.warn(`[prefkit] context injection skipped: ${errorMessage(error)}`);
       }
+
+      try {
+        queueOpenCodeLearnerEvent({
+          event,
+          cwd,
+          options,
+        });
+      } catch (error) {
+        console.warn(`[prefkit] learner event queue skipped: ${errorMessage(error)}`);
+      }
     });
   },
 };
 
 export default plugin;
 export { injectOpenCodePreferenceContext } from "./context.js";
+export { learnerEventFromOpenCodeContext, queueOpenCodeLearnerEvent } from "./queue.js";
 export type {
   OpenCodeAdapterOptions,
   OpenCodeContextEvent,
@@ -38,10 +50,15 @@ function adapterOptions(input: Record<string, unknown> | undefined): OpenCodeAda
 
   return {
     ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
+    ...(typeof input.injectContext === "boolean" ? { injectContext: input.injectContext } : {}),
     ...(typeof input.configPath === "string" ? { configPath: input.configPath } : {}),
     ...(typeof input.includeWhy === "boolean" ? { includeWhy: input.includeWhy } : {}),
     ...(typeof input.minConfidence === "number" ? { minConfidence: input.minConfidence } : {}),
     ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
+    ...(typeof input.queueEvents === "boolean" ? { queueEvents: input.queueEvents } : {}),
+    ...(typeof input.queueDir === "string" ? { queueDir: input.queueDir } : {}),
+    ...(typeof input.queueWeakEvents === "boolean" ? { queueWeakEvents: input.queueWeakEvents } : {}),
+    ...(typeof input.maxPromptChars === "number" ? { maxPromptChars: input.maxPromptChars } : {}),
   };
 }
 

@@ -43,6 +43,18 @@ describe("learner prefilter", () => {
     expect(decision.reasons.map((reason) => reason.code)).toContain("future-guidance");
   });
 
+  it("extracts no-prefixed corrections from a user prompt", () => {
+    const decision = scoreLearnerEvent(
+      event({
+        userPrompt: "No, use pnpm here.",
+      }),
+    );
+
+    expect(decision.shouldExtract).toBe(true);
+    expect(decision.score).toBe(3);
+    expect(decision.reasons.map((reason) => reason.code)).toContain("direct-correction");
+  });
+
   it("uses adapter metadata for mechanical signals", () => {
     const decision = scoreLearnerEvent(
       event({

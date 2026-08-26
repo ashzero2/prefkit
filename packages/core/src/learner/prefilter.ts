@@ -62,7 +62,8 @@ const phraseSignals: PhraseSignal[] = [
     code: "direct-correction",
     description: "The user directly corrected a prior choice.",
     weight: 3,
-    pattern: /\b(?:no[,.\s]|not that|instead\b|rather than|use .{1,50} instead|don'?t|do not|stop doing)\b/i,
+    pattern:
+      /(?:^|\b)(?:no(?:[,.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i,
   },
   {
     code: "prior-guidance-reference",

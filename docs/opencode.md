@@ -15,6 +15,7 @@ The v2 plugin API is beta, so verify against your installed OpenCode version bef
 ## Current Behavior
 
 The adapter currently injects PrefKit context only.
+It can also queue compact learner events from strong user prompts.
 
 Flow:
 
@@ -25,6 +26,7 @@ OpenCode context hook
   -> query SQLite preferences
   -> render bounded context
   -> append to OpenCode system context
+  -> redact and queue strong learner events
 ```
 
 The hook catches errors and logs a warning instead of throwing.
@@ -43,10 +45,14 @@ From an OpenCode project, add a plugin entry to `opencode.jsonc`:
       "package": "/absolute/path/to/taste/packages/adapter-opencode/src/index.ts",
       "options": {
         "enabled": true,
+        "injectContext": true,
+        "queueEvents": true,
         "configPath": "/absolute/path/to/your/.prefkit.json",
         "includeWhy": false,
         "limit": 8,
-        "minConfidence": 0.45
+        "minConfidence": 0.45,
+        "queueWeakEvents": false,
+        "maxPromptChars": 4000
       }
     }
   ]
@@ -79,11 +85,28 @@ Expected:
 - OpenCode should behave as if the relevant PrefKit preference was part of system context.
 - If PrefKit fails, OpenCode should continue and log a `[prefkit] context injection skipped` warning.
 
+To check queue capture, prompt OpenCode with:
+
+```text
+Remember that I prefer concise status updates.
+```
+
+Then inspect the queue configured by `learning.queuePath` or `queueDir`:
+
+```bash
+pnpm prefkit replay --queue-dir ~/.prefkit/queue --limit 10
+```
+
+Expected:
+
+- strong preference/correction prompts create `.json` event files
+- weak prompts do not queue by default
+- queued files are redacted before they are written
+- replay performs local model learning later, outside the OpenCode hook
+
 ## Next Adapter Chunk
 
 Next work:
 
-- event queue writer for OpenCode sessions
-- conservative event capture from user prompts/corrections
-- no model calls in OpenCode hooks
-- replay events later with `prefkit replay`
+- richer event-stream capture after real OpenCode payload inspection
+- install/doctor helpers for OpenCode config

@@ -14,7 +14,7 @@ const adapterAgent = "opencode";
 
 export function injectOpenCodePreferenceContext(input: OpenCodePreferenceContextInput): void {
   const options = normalizeOptions(input.options);
-  if (!options.enabled) {
+  if (!options.enabled || options.injectContext === false) {
     return;
   }
 

@@ -2,10 +2,15 @@ import type { ConfigLoadResult } from "@prefkit/core";
 
 export interface OpenCodeAdapterOptions {
   enabled?: boolean;
+  injectContext?: boolean;
   configPath?: string;
   includeWhy?: boolean;
   minConfidence?: number;
   limit?: number;
+  queueEvents?: boolean;
+  queueDir?: string;
+  queueWeakEvents?: boolean;
+  maxPromptChars?: number;
 }
 
 export interface OpenCodePluginContext {
