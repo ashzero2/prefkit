@@ -17,7 +17,12 @@ import {
   type RememberPreferenceInput,
   type ScopeType,
 } from "@prefkit/core";
-import { runOpenCodeDoctor, type OpenCodeDoctorReport } from "./opencode.js";
+import {
+  installOpenCodeAdapter,
+  runOpenCodeDoctor,
+  type OpenCodeDoctorReport,
+  type OpenCodeInstallReport,
+} from "./opencode.js";
 
 interface ParsedArgs {
   command: string | undefined;
@@ -540,9 +545,26 @@ function printReplayReport(report: ReplayReport): void {
 
 function runOpenCodeCommand(args: ParsedArgs, loadResult: ReturnType<typeof loadConfig>): number {
   const subcommand = args.positionals[0];
+  if (subcommand === "install") {
+    const opencodeConfigPath = flagOne(args, "opencode-config");
+    const adapterPackage = flagOne(args, "adapter-package");
+    const prefkitConfigPath = flagOne(args, "prefkit-config") ?? args.configPath;
+    const queueDir = flagOne(args, "queue-dir");
+    const report = installOpenCodeAdapter({
+      cwd: flagOne(args, "cwd") ?? process.cwd(),
+      ...(opencodeConfigPath === undefined ? {} : { opencodeConfigPath }),
+      ...(adapterPackage === undefined ? {} : { adapterPackage }),
+      ...(prefkitConfigPath === undefined ? {} : { prefkitConfigPath }),
+      ...(queueDir === undefined ? {} : { queueDir }),
+      write: args.flags.has("write"),
+    });
+    printOpenCodeInstall(report);
+    return report.ok ? 0 : 1;
+  }
+
   if (subcommand !== "doctor") {
     console.error(`Unknown OpenCode command: ${subcommand ?? ""}`);
-    console.error("Usage: prefkit opencode doctor [--opencode-config opencode.jsonc]");
+    console.error("Usage: prefkit opencode <doctor|install>");
     return 1;
   }
 
@@ -555,6 +577,18 @@ function runOpenCodeCommand(args: ParsedArgs, loadResult: ReturnType<typeof load
   });
   printOpenCodeDoctor(report);
   return report.ok ? 0 : 1;
+}
+
+function printOpenCodeInstall(report: OpenCodeInstallReport): void {
+  console.log(`PrefKit OpenCode install: ${report.ok ? "ok" : "needs attention"}`);
+  console.log(report.message);
+  for (const check of report.checks) {
+    console.log(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.message}`);
+  }
+  if (!report.wrote) {
+    console.log("");
+    console.log(report.snippet);
+  }
 }
 
 function printOpenCodeDoctor(report: OpenCodeDoctorReport): void {
@@ -622,6 +656,7 @@ Usage:
   prefkit learn --event-file event.json [--persist]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
   prefkit doctor [--config .prefkit.json]
+  prefkit opencode install [--write] [--opencode-config opencode.jsonc]
   prefkit opencode doctor [--opencode-config opencode.jsonc]
 `);
 }

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { expandHome, type ConfigLoadResult, type DoctorCheck } from "@prefkit/core";
@@ -32,6 +32,25 @@ export interface OpenCodeDoctorReport {
   ok: boolean;
   checks: DoctorCheck[];
   configPaths: string[];
+}
+
+export interface OpenCodeInstallOptions {
+  cwd: string;
+  opencodeConfigPath?: string;
+  adapterPackage?: string;
+  prefkitConfigPath?: string;
+  queueDir?: string;
+  write?: boolean;
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface OpenCodeInstallReport {
+  ok: boolean;
+  wrote: boolean;
+  targetPath: string;
+  snippet: string;
+  message: string;
+  checks: DoctorCheck[];
 }
 
 const pluginId = "prefkit.opencode";
@@ -97,6 +116,100 @@ export function runOpenCodeDoctor(
   };
 }
 
+export function installOpenCodeAdapter(options: OpenCodeInstallOptions): OpenCodeInstallReport {
+  const cwd = resolve(options.cwd);
+  const targetPath = selectOpenCodeInstallPath(cwd, options.opencodeConfigPath);
+  const adapterPackage = options.adapterPackage ?? defaultAdapterSpecifier();
+  const entry = openCodePluginEntry(adapterPackage, options);
+  const snippet = JSON.stringify(
+    {
+      $schema: "https://opencode.ai/config.json",
+      plugins: [entry],
+    },
+    null,
+    2,
+  );
+  const checks: DoctorCheck[] = [
+    {
+      name: "target-config",
+      ok: true,
+      message: `Target OpenCode config: ${targetPath}`,
+    },
+    {
+      name: "adapter-package",
+      ok: !isLocalPluginPath(adapterPackage) || existsSync(resolvePluginPath(targetPath, adapterPackage)),
+      message:
+        !isLocalPluginPath(adapterPackage) || existsSync(resolvePluginPath(targetPath, adapterPackage))
+          ? `Adapter package/path is usable: ${adapterPackage}`
+          : `Adapter path does not exist: ${resolvePluginPath(targetPath, adapterPackage)}`,
+    },
+  ];
+
+  if (!options.write) {
+    return {
+      ok: checks.every((check) => check.ok),
+      wrote: false,
+      targetPath,
+      snippet,
+      message: "Generated OpenCode config snippet. Re-run with --write to create a missing local config file.",
+      checks,
+    };
+  }
+
+  if (!checks.every((check) => check.ok)) {
+    return {
+      ok: false,
+      wrote: false,
+      targetPath,
+      snippet,
+      message: "OpenCode config was not written because the install checks need attention.",
+      checks,
+    };
+  }
+
+  if (existsSync(targetPath)) {
+    const inspection = inspectOpenCodeConfig(targetPath);
+    if (inspection.ok && activePrefKitEntries([inspection], []).length > 0) {
+      return {
+        ok: checks.every((check) => check.ok),
+        wrote: false,
+        targetPath,
+        snippet,
+        message: "OpenCode config already contains an active PrefKit plugin entry.",
+        checks,
+      };
+    }
+
+    return {
+      ok: false,
+      wrote: false,
+      targetPath,
+      snippet,
+      message: "OpenCode config already exists. Add the plugin entry from the snippet, then run prefkit opencode doctor.",
+      checks: [
+        ...checks,
+        {
+          name: "write-config",
+          ok: false,
+          message: "Refusing to rewrite an existing JSON/JSONC config automatically.",
+        },
+      ],
+    };
+  }
+
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, `${snippet}\n`, { mode: 0o600 });
+
+  return {
+    ok: checks.every((check) => check.ok),
+    wrote: true,
+    targetPath,
+    snippet,
+    message: `Created OpenCode config: ${targetPath}`,
+    checks,
+  };
+}
+
 export function discoverOpenCodeConfigPaths(
   cwd: string,
   explicitPath: string | undefined,
@@ -123,6 +236,46 @@ export function discoverOpenCodeConfigPaths(
   }
 
   return paths;
+}
+
+function selectOpenCodeInstallPath(cwd: string, explicitPath: string | undefined): string {
+  if (explicitPath !== undefined && explicitPath.trim().length > 0) {
+    return resolveUserPath(cwd, explicitPath);
+  }
+
+  const localCandidates = [
+    join(cwd, "opencode.jsonc"),
+    join(cwd, "opencode.json"),
+    join(cwd, ".opencode", "opencode.jsonc"),
+    join(cwd, ".opencode", "opencode.json"),
+  ];
+  return localCandidates.find((path) => existsSync(path)) ?? join(cwd, ".opencode", "opencode.jsonc");
+}
+
+function openCodePluginEntry(
+  adapterPackage: string,
+  options: Pick<OpenCodeInstallOptions, "prefkitConfigPath" | "queueDir">,
+): { package: string; options: JsonObject } {
+  return {
+    package: adapterPackage,
+    options: {
+      enabled: true,
+      injectContext: true,
+      queueEvents: true,
+      ...(options.prefkitConfigPath === undefined ? {} : { configPath: options.prefkitConfigPath }),
+      includeWhy: false,
+      limit: 8,
+      minConfidence: 0.45,
+      ...(options.queueDir === undefined ? {} : { queueDir: options.queueDir }),
+      queueWeakEvents: false,
+      maxPromptChars: 4000,
+    },
+  };
+}
+
+function defaultAdapterSpecifier(): string {
+  const localSource = new URL("../../adapter-opencode/src/index.ts", import.meta.url).pathname;
+  return existsSync(localSource) ? localSource : defaultAdapterPackage;
 }
 
 function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {

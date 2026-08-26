@@ -86,11 +86,13 @@ Ollama remote serving is controlled by Ollama's `OLLAMA_HOST` setting on the ser
 For OpenCode adapter setup:
 
 ```bash
+pnpm prefkit opencode install
+pnpm prefkit opencode install --write
 pnpm prefkit opencode doctor
 pnpm prefkit opencode doctor --opencode-config ./opencode.jsonc
 ```
 
-The OpenCode doctor checks supported config locations, `.opencode/plugins/` discovery, PrefKit plugin options, local adapter paths, and the queue directory that adapter-captured events will use.
+The install command prints a config snippet by default. With `--write`, it creates `.opencode/opencode.jsonc` only when a local OpenCode config does not already exist. The doctor checks supported config locations, `.opencode/plugins/` discovery, PrefKit plugin options, local adapter paths, and the queue directory that adapter-captured events will use.
 
 ## Manual Preferences
 
@@ -187,6 +189,7 @@ pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
 The OpenCode adapter uses OpenCode's v2 plugin `context` hook. It injects only bounded, relevant PrefKit context into the live prompt and queues strong learning events for later replay.
 
 ```bash
+pnpm prefkit opencode install
 pnpm prefkit opencode doctor
 ```
 

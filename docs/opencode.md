@@ -35,7 +35,25 @@ It does not run local model learning inside the prompt path.
 
 ## Local Development Loading
 
-From an OpenCode project, add a plugin entry to `opencode.jsonc`:
+From an OpenCode project, generate a config snippet:
+
+```bash
+pnpm prefkit opencode install
+```
+
+If the project has no local OpenCode config yet, PrefKit can create `.opencode/opencode.jsonc`:
+
+```bash
+pnpm prefkit opencode install --write
+```
+
+For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, override it:
+
+```bash
+pnpm prefkit opencode install --adapter-package @prefkit/adapter-opencode
+```
+
+You can also add the plugin entry manually to `opencode.jsonc`:
 
 ```jsonc
 {
@@ -70,6 +88,12 @@ pnpm prefkit opencode doctor --opencode-config /path/to/project/opencode.jsonc
 ```
 
 Without `--opencode-config`, the doctor looks across standard OpenCode config locations and `.opencode/plugins/` discovery paths.
+
+If OpenCode is already running and does not reload the changed file, restart the service:
+
+```bash
+opencode2 service restart
+```
 
 ## Smoke Check
 

@@ -1,10 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultConfig, type ConfigLoadResult } from "@prefkit/core";
-import { discoverOpenCodeConfigPaths, runOpenCodeDoctor } from "../src/opencode.js";
+import { defaultConfig, type ConfigLoadResult, type DoctorCheck } from "@prefkit/core";
+import { discoverOpenCodeConfigPaths, installOpenCodeAdapter, runOpenCodeDoctor } from "../src/opencode.js";
 
 describe("OpenCode doctor", () => {
   it("discovers explicit config paths only when provided", () => {
@@ -101,6 +101,99 @@ describe("OpenCode doctor", () => {
   });
 });
 
+describe("OpenCode install", () => {
+  it("generates a config snippet without writing by default", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const targetPath = join(cwd, ".opencode", "opencode.jsonc");
+
+    const report = installOpenCodeAdapter({
+      cwd,
+      adapterPackage: "./prefkit.ts",
+      prefkitConfigPath: "./.prefkit.json",
+      queueDir: "./.prefkit/queue",
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.wrote).toBe(false);
+    expect(report.targetPath).toBe(targetPath);
+    expect(existsSync(targetPath)).toBe(false);
+    expect(report.snippet).toContain("\"package\": \"./prefkit.ts\"");
+    expect(report.snippet).toContain("\"configPath\": \"./.prefkit.json\"");
+    expect(report.snippet).toContain("\"queueDir\": \"./.prefkit/queue\"");
+  });
+
+  it("writes a missing project-local config when requested", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const adapterPath = join(cwd, "prefkit.ts");
+    writeFileSync(adapterPath, "export default {}\n");
+
+    const report = installOpenCodeAdapter({
+      cwd,
+      adapterPackage: "../prefkit.ts",
+      write: true,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.wrote).toBe(true);
+    expect(existsSync(report.targetPath)).toBe(true);
+    const config = readFileSync(report.targetPath, "utf8");
+    expect(config).toContain("\"$schema\": \"https://opencode.ai/config.json\"");
+    expect(config).toContain("\"package\": \"../prefkit.ts\"");
+  });
+
+  it("does not write when a local adapter path is missing", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const report = installOpenCodeAdapter({
+      cwd,
+      adapterPackage: "../missing-prefkit.ts",
+      write: true,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.wrote).toBe(false);
+    expect(existsSync(report.targetPath)).toBe(false);
+    expect(check(report, "adapter-package")?.ok).toBe(false);
+  });
+
+  it("does not rewrite existing OpenCode config files", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const configPath = join(cwd, "opencode.jsonc");
+    writeFileSync(configPath, "{\n  \"model\": \"openai/test\"\n}\n");
+
+    const report = installOpenCodeAdapter({
+      cwd,
+      adapterPackage: "@prefkit/adapter-opencode",
+      write: true,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.wrote).toBe(false);
+    expect(readFileSync(configPath, "utf8")).toBe("{\n  \"model\": \"openai/test\"\n}\n");
+    expect(report.message).toContain("already exists");
+  });
+
+  it("does not rewrite an existing config with an active prefkit entry", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const configPath = join(cwd, "opencode.jsonc");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        plugins: ["@prefkit/adapter-opencode"],
+      }),
+    );
+
+    const report = installOpenCodeAdapter({
+      cwd,
+      adapterPackage: "@prefkit/adapter-opencode",
+      write: true,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.wrote).toBe(false);
+    expect(report.message).toContain("already contains");
+  });
+});
+
 function loadResult(queueParent: string): ConfigLoadResult {
   const queuePath = join(queueParent, "queue");
   mkdirSync(queueParent, { recursive: true });
@@ -117,6 +210,6 @@ function loadResult(queueParent: string): ConfigLoadResult {
   };
 }
 
-function check(report: ReturnType<typeof runOpenCodeDoctor>, name: string) {
+function check(report: { checks: DoctorCheck[] }, name: string) {
   return report.checks.find((item) => item.name === name);
 }
