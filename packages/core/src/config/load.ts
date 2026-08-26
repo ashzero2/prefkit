@@ -113,6 +113,9 @@ function applyEnv(config: PrefKitConfig, env: NodeJS.ProcessEnv): PrefKitConfig 
       next.localModel.timeoutMs,
     );
   }
+  if (env.PREFKIT_MODEL_THINK) {
+    next.localModel.think = parseLocalModelThinkMode(env.PREFKIT_MODEL_THINK, next.localModel.think);
+  }
   if (env.PREFKIT_REDACT_SECRETS) {
     next.privacy.redactSecrets = parseBoolean(
       env.PREFKIT_REDACT_SECRETS,
@@ -171,6 +174,25 @@ function parseLearningMode(
   fallback: PrefKitConfig["learning"]["mode"],
 ): PrefKitConfig["learning"]["mode"] {
   if (value === "local" || value === "api" || value === "off" || value === "manual") {
+    return value;
+  }
+
+  return fallback;
+}
+
+function parseLocalModelThinkMode(
+  value: string,
+  fallback: PrefKitConfig["localModel"]["think"],
+): PrefKitConfig["localModel"]["think"] {
+  if (
+    value === "omit" ||
+    value === "false" ||
+    value === "true" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "max"
+  ) {
     return value;
   }
 

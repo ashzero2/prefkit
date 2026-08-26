@@ -6,6 +6,7 @@ export type {
   InjectionConfig,
   LearningConfig,
   LocalModelConfig,
+  LocalModelThinkMode,
   PrefKitConfig,
   PrivacyConfig,
   StoreConfig,

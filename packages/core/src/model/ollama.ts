@@ -1,4 +1,4 @@
-import type { LocalModelConfig } from "../config/types.js";
+import type { LocalModelConfig, LocalModelThinkMode } from "../config/types.js";
 import type { ModelHealth, ModelJsonRequest, ModelJsonResult, PrefKitJsonModel, PrefKitModel } from "./types.js";
 
 interface OllamaTagsResponse {
@@ -11,6 +11,18 @@ interface OllamaChatResponse {
   };
   prompt_eval_count?: number;
   eval_count?: number;
+}
+
+interface OllamaChatRequestBody {
+  model: string;
+  messages: ModelJsonRequest["messages"];
+  stream: false;
+  format: unknown;
+  think?: boolean | "low" | "medium" | "high" | "max";
+  options: {
+    temperature: number;
+    num_predict: number;
+  };
 }
 
 export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
@@ -76,6 +88,20 @@ export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
   async generateJson(request: ModelJsonRequest): Promise<ModelJsonResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const requestBody: OllamaChatRequestBody = {
+      model: this.config.model,
+      messages: request.messages,
+      stream: false,
+      format: request.schema,
+      options: {
+        temperature: request.temperature,
+        num_predict: request.maxOutputTokens,
+      },
+    };
+    const think = ollamaThinkValue(this.config.think);
+    if (think !== undefined) {
+      requestBody.think = think;
+    }
 
     try {
       const response = await fetch(new URL("/api/chat", this.config.baseUrl), {
@@ -83,17 +109,7 @@ export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages: request.messages,
-          stream: false,
-          think: false,
-          format: request.schema,
-          options: {
-            temperature: request.temperature,
-            num_predict: request.maxOutputTokens,
-          },
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -101,8 +117,8 @@ export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
         throw new Error(`Ollama returned HTTP ${response.status}.`);
       }
 
-      const body = (await response.json()) as OllamaChatResponse;
-      const content = body.message?.content;
+      const responseBody = (await response.json()) as OllamaChatResponse;
+      const content = responseBody.message?.content;
       if (typeof content !== "string" || content.trim().length === 0) {
         throw new Error("Ollama response did not include message.content.");
       }
@@ -111,8 +127,8 @@ export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
         json: parseJsonContent(content),
         rawText: content,
         usage: {
-          ...(typeof body.prompt_eval_count === "number" ? { inputTokens: body.prompt_eval_count } : {}),
-          ...(typeof body.eval_count === "number" ? { outputTokens: body.eval_count } : {}),
+          ...(typeof responseBody.prompt_eval_count === "number" ? { inputTokens: responseBody.prompt_eval_count } : {}),
+          ...(typeof responseBody.eval_count === "number" ? { outputTokens: responseBody.eval_count } : {}),
         },
       };
     } catch (error) {
@@ -123,6 +139,22 @@ export class OllamaModel implements PrefKitModel, PrefKitJsonModel {
     } finally {
       clearTimeout(timeout);
     }
+  }
+}
+
+function ollamaThinkValue(mode: LocalModelThinkMode): boolean | "low" | "medium" | "high" | "max" | undefined {
+  switch (mode) {
+    case "omit":
+      return undefined;
+    case "false":
+      return false;
+    case "true":
+      return true;
+    case "low":
+    case "medium":
+    case "high":
+    case "max":
+      return mode;
   }
 }
 

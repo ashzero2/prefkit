@@ -1,0 +1,14 @@
+{
+  "agent": "claude",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "explicit_correction",
+  "userPrompt": "Use npm for this repository instead. pnpm is causing install issues here.",
+  "assistantSummary": "Previously suggested pnpm because of a general package manager preference.",
+  "repoContext": {
+    "packageManager": "unknown"
+  },
+  "metadata": {
+    "rejectedAction": true
+  }
+}

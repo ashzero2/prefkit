@@ -1,5 +1,6 @@
 export type LearningMode = "local" | "api" | "off" | "manual";
 export type LocalModelProvider = "ollama" | "openai-compatible" | "mock";
+export type LocalModelThinkMode = "omit" | "false" | "true" | "low" | "medium" | "high" | "max";
 export type RemoteModelProvider = "openai-compatible";
 export type RedactFileContentsMode = "never" | "large" | "always";
 
@@ -26,6 +27,7 @@ export interface LocalModelConfig {
   timeoutMs: number;
   maxInputTokens: number;
   maxOutputTokens: number;
+  think: LocalModelThinkMode;
 }
 
 export interface ApiModelConfig {

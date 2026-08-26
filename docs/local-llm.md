@@ -62,6 +62,8 @@ Replay a queue:
 pnpm prefkit replay --queue-dir examples/events --limit 10
 ```
 
+For a fuller model-quality pass, use [model-qa.md](model-qa.md).
+
 ## Failure Modes
 
 Expected clean failures:

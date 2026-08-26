@@ -30,6 +30,7 @@ describe("config loading", () => {
       env: {
         PREFKIT_OLLAMA_MODEL: "qwen3:4b",
         PREFKIT_MODEL_TIMEOUT_MS: "1000",
+        PREFKIT_MODEL_THINK: "low",
       },
     });
 
@@ -37,6 +38,7 @@ describe("config loading", () => {
     expect(result.config.injection.maxTokens).toBe(300);
     expect(result.config.localModel.model).toBe("qwen3:4b");
     expect(result.config.localModel.timeoutMs).toBe(1000);
+    expect(result.config.localModel.think).toBe("low");
   });
 
   it("expands home directory paths", () => {

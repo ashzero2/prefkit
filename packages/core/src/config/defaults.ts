@@ -22,6 +22,7 @@ export const defaultConfig: PrefKitConfig = {
     timeoutMs: 20000,
     maxInputTokens: 3500,
     maxOutputTokens: 700,
+    think: "omit",
   },
   apiModel: {
     enabled: false,

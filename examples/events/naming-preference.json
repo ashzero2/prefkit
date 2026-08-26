@@ -1,0 +1,12 @@
+{
+  "agent": "codex",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "explicit_memory",
+  "userPrompt": "Remember this for naming work: I prefer elegant professional product names, and goofy names are only okay when they are genuinely strong.",
+  "assistantSummary": "The user clarified their product naming preference.",
+  "repoContext": {},
+  "metadata": {
+    "explicitPreference": true
+  }
+}

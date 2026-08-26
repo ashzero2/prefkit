@@ -1,0 +1,12 @@
+{
+  "agent": "claude",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "explicit_memory",
+  "userPrompt": "From now on, when a phase finishes, tell me exactly what was implemented and what I should check before the next commit.",
+  "assistantSummary": "The user requested a specific phase-completion reporting style.",
+  "repoContext": {},
+  "metadata": {
+    "explicitPreference": true
+  }
+}

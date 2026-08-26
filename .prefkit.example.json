@@ -19,7 +19,8 @@
     "temperature": 0,
     "timeoutMs": 20000,
     "maxInputTokens": 3500,
-    "maxOutputTokens": 700
+    "maxOutputTokens": 700,
+    "think": "omit"
   },
   "apiModel": {
     "enabled": false,

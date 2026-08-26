@@ -164,6 +164,8 @@ pnpm prefkit replay --queue-dir examples/events --limit 10
 pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
 ```
 
+See [docs/model-qa.md](docs/model-qa.md) for the real-model tuning checklist.
+
 Weak events are skipped before any model call:
 
 ```bash
@@ -226,7 +228,6 @@ Completed:
 
 Next:
 
-- Phase 3 docs and real-model tuning
 - Phase 4 Claude Code adapter
 - Phase 5 OpenCode adapter
 - Phase 6 Codex adapter

@@ -31,7 +31,6 @@ describe("OllamaModel", () => {
       model: "qwen3:4b",
       messages: [{ role: "user", content: "Extract a preference." }],
       stream: false,
-      think: false,
       format: { type: "object", properties: { shouldLearn: { type: "boolean" } } },
       options: {
         temperature: 0,
@@ -45,6 +44,24 @@ describe("OllamaModel", () => {
         inputTokens: 42,
         outputTokens: 7,
       },
+    });
+  });
+
+  it("passes configured thinking mode when requested", async () => {
+    const fetchMock = mockFetch(
+      Response.json({
+        message: {
+          content: JSON.stringify({ shouldLearn: false }),
+        },
+      }),
+    );
+    const model = new OllamaModel(config({ think: "low" }));
+
+    await model.generateJson(request());
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      think: "low",
     });
   });
 
