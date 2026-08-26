@@ -63,6 +63,14 @@ If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the O
 
 Restart OpenCode after adding the plugin.
 
+Check the setup with:
+
+```bash
+pnpm prefkit opencode doctor --opencode-config /path/to/project/opencode.jsonc
+```
+
+Without `--opencode-config`, the doctor looks across standard OpenCode config locations and `.opencode/plugins/` discovery paths.
+
 ## Smoke Check
 
 Use a temp store first:
@@ -108,5 +116,7 @@ Expected:
 
 Next work:
 
-- richer event-stream capture after real OpenCode payload inspection
 - install/doctor helpers for OpenCode config
+- install helper or generated config snippet
+- packaged adapter entrypoint hardening
+- richer event-stream capture after real OpenCode payload inspection

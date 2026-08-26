@@ -13,6 +13,7 @@ The current implementation supports:
 - deterministic signal gating and confidence scoring
 - single-event learning with optional persistence
 - queue replay for adapter-produced event files
+- OpenCode context injection and learner event queueing
 
 Agent adapters for Claude Code, Codex, OpenCode, and MCP are planned next. The core package is intentionally adapter-agnostic.
 
@@ -81,6 +82,15 @@ pnpm prefkit doctor
 ```
 
 Ollama remote serving is controlled by Ollama's `OLLAMA_HOST` setting on the server machine.
+
+For OpenCode adapter setup:
+
+```bash
+pnpm prefkit opencode doctor
+pnpm prefkit opencode doctor --opencode-config ./opencode.jsonc
+```
+
+The OpenCode doctor checks supported config locations, `.opencode/plugins/` discovery, PrefKit plugin options, local adapter paths, and the queue directory that adapter-captured events will use.
 
 ## Manual Preferences
 
@@ -172,6 +182,16 @@ Weak events are skipped before any model call:
 pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
 ```
 
+## OpenCode
+
+The OpenCode adapter uses OpenCode's v2 plugin `context` hook. It injects only bounded, relevant PrefKit context into the live prompt and queues strong learning events for later replay.
+
+```bash
+pnpm prefkit opencode doctor
+```
+
+See [docs/opencode.md](docs/opencode.md) for config examples, smoke checks, and replay flow.
+
 ## Event JSON
 
 Adapters should write compact event packets like this:
@@ -225,10 +245,11 @@ Completed:
 - Phase 1: SQLite storage and manual preference commands
 - Phase 2: deterministic retrieval and bounded context rendering
 - Phase 3: learner schemas, redaction, prefilter, confidence engine, extractor runner, Ollama JSON generation, `learn`, persistence, replay
+- Phase 5a: OpenCode context adapter, learner event queue, setup doctor
 
 Next:
 
+- OpenCode install helper and package hardening
 - Phase 4 Claude Code adapter
-- Phase 5 OpenCode adapter
 - Phase 6 Codex adapter
 - MCP tools for portable preference retrieval and explicit memory

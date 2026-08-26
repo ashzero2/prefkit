@@ -17,6 +17,7 @@ import {
   type RememberPreferenceInput,
   type ScopeType,
 } from "@prefkit/core";
+import { runOpenCodeDoctor, type OpenCodeDoctorReport } from "./opencode.js";
 
 interface ParsedArgs {
   command: string | undefined;
@@ -111,6 +112,10 @@ async function main(argv: string[]): Promise<number> {
     } finally {
       store?.close();
     }
+  }
+
+  if (args.command === "opencode") {
+    return runOpenCodeCommand(args, loadResult);
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -533,6 +538,32 @@ function printReplayReport(report: ReplayReport): void {
   }
 }
 
+function runOpenCodeCommand(args: ParsedArgs, loadResult: ReturnType<typeof loadConfig>): number {
+  const subcommand = args.positionals[0];
+  if (subcommand !== "doctor") {
+    console.error(`Unknown OpenCode command: ${subcommand ?? ""}`);
+    console.error("Usage: prefkit opencode doctor [--opencode-config opencode.jsonc]");
+    return 1;
+  }
+
+  const opencodeConfigPath = flagOne(args, "opencode-config");
+  const adapterPackage = flagOne(args, "adapter-package");
+  const report = runOpenCodeDoctor(loadResult, {
+    cwd: flagOne(args, "cwd") ?? process.cwd(),
+    ...(opencodeConfigPath === undefined ? {} : { opencodeConfigPath }),
+    ...(adapterPackage === undefined ? {} : { adapterPackage }),
+  });
+  printOpenCodeDoctor(report);
+  return report.ok ? 0 : 1;
+}
+
+function printOpenCodeDoctor(report: OpenCodeDoctorReport): void {
+  console.log(`PrefKit OpenCode doctor: ${report.ok ? "ok" : "needs attention"}`);
+  for (const check of report.checks) {
+    console.log(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.message}`);
+  }
+}
+
 function printDoctor(report: Awaited<ReturnType<typeof runDoctor>>): void {
   console.log(`PrefKit doctor: ${report.ok ? "ok" : "needs attention"}`);
   for (const check of report.checks) {
@@ -591,6 +622,7 @@ Usage:
   prefkit learn --event-file event.json [--persist]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
   prefkit doctor [--config .prefkit.json]
+  prefkit opencode doctor [--opencode-config opencode.jsonc]
 `);
 }
 
