@@ -1,0 +1,12 @@
+{
+  "agent": "codex",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "explicit_memory",
+  "userPrompt": "Remember that I prefer concise status updates while you work.",
+  "assistantSummary": "Acknowledged the user's preference.",
+  "repoContext": {},
+  "metadata": {
+    "explicitPreference": true
+  }
+}

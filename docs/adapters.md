@@ -8,3 +8,13 @@ Adapters are intentionally thin.
 - MCP: portable tools for manual retrieval and explicit memory commands.
 
 No adapter should run local LLM extraction in a hot hook path.
+
+Adapter responsibilities:
+
+- request bounded context from `prefkit context`
+- write compact learner event JSON files into `learning.queuePath`
+- keep hook failures non-blocking
+- avoid storing full transcripts or large code blobs
+- let `prefkit replay` perform slower local model extraction later
+
+The event format is documented in [events.md](events.md).

@@ -1,0 +1,14 @@
+{
+  "agent": "claude",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "explicit_correction",
+  "userPrompt": "No, use pnpm here. I prefer pnpm for JavaScript projects.",
+  "assistantSummary": "Suggested npm install.",
+  "repoContext": {
+    "packageManager": "unknown"
+  },
+  "metadata": {
+    "userEditedGeneratedOutput": false
+  }
+}

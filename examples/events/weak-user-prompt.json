@@ -1,0 +1,10 @@
+{
+  "agent": "opencode",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "user_prompt",
+  "userPrompt": "Can you add a unit test for this helper?",
+  "assistantSummary": "",
+  "repoContext": {},
+  "metadata": {}
+}
