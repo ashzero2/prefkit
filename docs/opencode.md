@@ -58,7 +58,8 @@ pnpm prefkit opencode install --write
 For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, use the `@prefkit/opencode` package once it is published:
 
 ```bash
-pnpm prefkit opencode install --adapter-package @prefkit/opencode
+npm install --global prefkit
+prefkit opencode install --adapter-package @prefkit/opencode
 ```
 
 You can also add the plugin entry manually to `opencode.jsonc`:
@@ -68,7 +69,7 @@ You can also add the plugin entry manually to `opencode.jsonc`:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "/absolute/path/to/taste/packages/adapter-opencode/src/index.ts",
+      "@prefkit/opencode",
       {
         "enabled": true,
         "injectContext": true,
@@ -91,7 +92,7 @@ You can also add the plugin entry manually to `opencode.jsonc`:
 
 If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the OpenCode worktree and then the user config path.
 
-The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit` CLI for both context lookup and learner-event queueing. Queue input is sent over stdin, then the CLI validates, redacts, gates, and writes it. The published plugin package has no `@prefkit/core` or native SQLite dependency. The CLI must be installed separately and kept on `PATH`, or configured with `prefkitCommand` and `prefkitArgs`.
+The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit` CLI for both context lookup and learner-event queueing. Queue input is sent over stdin, then the CLI validates, redacts, gates, and writes it. The published plugin package has no `@prefkit/core` or native SQLite dependency. Install the published `prefkit` CLI separately and keep it on `PATH`, or configure `prefkitCommand` and `prefkitArgs` for a custom executable.
 
 When `notifyOnInjection` is `once-per-session` or `always`, the adapter asks OpenCode's TUI to show `PrefKit: Applied saved preferences` after successful injection. Toast failures never affect the model request. Use `off` for silent operation.
 
@@ -155,11 +156,13 @@ Expected:
 
 ## Packaging Status
 
-The plugin package is prepared with a compiled `dist` entrypoint and no SQLite dependency. Validate it locally from this repository with:
+The `prefkit`, `@prefkit/core`, and `@prefkit/opencode` packages are prepared with compiled `dist` entrypoints. Validate them locally from this repository with:
 
 ```bash
-./node_modules/.bin/tsc -p packages/adapter-opencode/tsconfig.build.json
-npm pack --dry-run ./packages/adapter-opencode
+pnpm build:packages
+pnpm --filter @prefkit/core pack --dry-run
+pnpm --filter ./packages/cli pack --dry-run
+pnpm --filter @prefkit/opencode pack --dry-run
 ```
 
-The separate `prefkit` CLI package is still required for the `prefkit context` and `prefkit queue` commands. Publishing and installing that CLI is the next packaging batch.
+The plugin and CLI are intentionally separate: OpenCode loads `@prefkit/opencode`, while that plugin calls the separately installed `prefkit` executable for context and queue operations. Publishing to npm is still a release step; use pnpm's publish flow so workspace dependency ranges are converted to regular semver ranges in the published manifests.

@@ -12,6 +12,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
   },
+  "devDependencies": {
+    "@prefkit/core": "workspace:*"
+  },
   "publishConfig": {
     "access": "public"
   }

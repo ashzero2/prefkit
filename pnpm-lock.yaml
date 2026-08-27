@@ -37,7 +37,7 @@ importers:
         version: link:../core
 
   packages/adapter-opencode:
-    dependencies:
+    devDependencies:
       '@prefkit/core':
         specifier: workspace:*
         version: link:../core
@@ -45,7 +45,7 @@ importers:
   packages/cli:
     dependencies:
       '@prefkit/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
 
   packages/core:

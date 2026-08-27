@@ -1,12 +1,24 @@
 {
-  "name": "@prefkit/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "prefkit",
+  "version": "0.1.0",
+  "description": "Local-first preference memory and context injection for coding agents.",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "bin": {
-    "prefkit": "./src/main.ts"
+    "prefkit": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@prefkit/core": "workspace:*"
+    "@prefkit/core": "workspace:^"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -34,6 +34,15 @@ pnpm prefkit init
 
 By default the store is `~/.prefkit/prefs.db`.
 
+For a published installation, install the CLI globally:
+
+```bash
+npm install --global prefkit
+prefkit init
+```
+
+The repository commands below use `pnpm prefkit` for local development. The OpenCode plugin uses the installed `prefkit` executable after the packages are published.
+
 For isolated checks, use a temporary store:
 
 ```bash
@@ -253,7 +262,7 @@ Completed:
 
 Next:
 
-- Publish the `prefkit` CLI and `@prefkit/opencode` plugin packages
+- Publish the versioned `prefkit`, `@prefkit/core`, and `@prefkit/opencode` packages to npm
 - Phase 4 Claude Code adapter
 - Phase 6 Codex adapter
 - MCP tools for portable preference retrieval and explicit memory
