@@ -37,7 +37,7 @@ By default the store is `~/.prefkit/prefs.db`.
 For a published installation, install the CLI globally:
 
 ```bash
-npm install --global prefkit
+npm install --global @aswinz2/prefkit
 prefkit init
 ```
 
@@ -262,7 +262,7 @@ Completed:
 
 Next:
 
-- Publish the versioned `prefkit`, `@prefkit/core`, and `@prefkit/opencode` packages to npm
+- Publish the versioned `@aswinz2/prefkit`, `@prefkit/core`, and `@prefkit/opencode` packages to npm
 - Phase 4 Claude Code adapter
 - Phase 6 Codex adapter
 - MCP tools for portable preference retrieval and explicit memory
