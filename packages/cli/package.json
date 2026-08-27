@@ -1,5 +1,5 @@
 {
-  "name": "@aswinz2/prefkit",
+  "name": "@prefkit/cli",
   "version": "0.1.0",
   "description": "Local-first preference memory and context injection for coding agents.",
   "type": "module",

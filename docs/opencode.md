@@ -58,7 +58,7 @@ pnpm prefkit opencode install --write
 For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, use the `@prefkit/opencode` package once it is published:
 
 ```bash
-npm install --global @aswinz2/prefkit
+npm install --global @prefkit/cli
 prefkit opencode install --adapter-package @prefkit/opencode
 ```
 
@@ -92,7 +92,7 @@ You can also add the plugin entry manually to `opencode.jsonc`:
 
 If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the OpenCode worktree and then the user config path.
 
-The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit` CLI for both context lookup and learner-event queueing. Queue input is sent over stdin, then the CLI validates, redacts, gates, and writes it. The published plugin package has no `@prefkit/core` or native SQLite dependency. Install the published `@aswinz2/prefkit` CLI separately and keep its `prefkit` executable on `PATH`, or configure `prefkitCommand` and `prefkitArgs` for a custom executable.
+The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit` CLI for both context lookup and learner-event queueing. Queue input is sent over stdin, then the CLI validates, redacts, gates, and writes it. The published plugin package has no `@prefkit/core` or native SQLite dependency. Install the published `@prefkit/cli` package separately and keep its `prefkit` executable on `PATH`, or configure `prefkitCommand` and `prefkitArgs` for a custom executable.
 
 When `notifyOnInjection` is `once-per-session` or `always`, the adapter asks OpenCode's TUI to show `PrefKit: Applied saved preferences` after successful injection. Toast failures never affect the model request. Use `off` for silent operation.
 
@@ -156,7 +156,7 @@ Expected:
 
 ## Packaging Status
 
-The `@aswinz2/prefkit`, `@prefkit/core`, and `@prefkit/opencode` packages are prepared with compiled `dist` entrypoints. Validate them locally from this repository with:
+The `@prefkit/cli`, `@prefkit/core`, and `@prefkit/opencode` packages are prepared with compiled `dist` entrypoints. Validate them locally from this repository with:
 
 ```bash
 pnpm build:packages
@@ -165,4 +165,4 @@ pnpm --filter ./packages/cli pack --dry-run
 pnpm --filter @prefkit/opencode pack --dry-run
 ```
 
-The plugin and CLI are intentionally separate: OpenCode loads `@prefkit/opencode`, while that plugin calls the separately installed `prefkit` executable from `@aswinz2/prefkit` for context and queue operations. Publishing to npm is still a release step; use pnpm's publish flow so workspace dependency ranges are converted to regular semver ranges in the published manifests.
+The plugin and CLI are intentionally separate: OpenCode loads `@prefkit/opencode`, while that plugin calls the separately installed `prefkit` executable from `@prefkit/cli` for context and queue operations. Publishing to npm is still a release step; use pnpm's publish flow so workspace dependency ranges are converted to regular semver ranges in the published manifests.
