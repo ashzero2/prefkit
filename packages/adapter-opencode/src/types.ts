@@ -1,5 +1,3 @@
-import type { ConfigLoadResult } from "@prefkit/core";
-
 export interface OpenCodeAdapterOptions {
   enabled?: boolean;
   injectContext?: boolean;
@@ -105,5 +103,4 @@ export interface OpenCodePreferenceContextInput {
   event: OpenCodeContextEvent;
   cwd: string;
   options: OpenCodeAdapterOptions;
-  loadConfig?: (input: { cwd: string; configPath?: string }) => ConfigLoadResult;
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,7 +35,7 @@ describe("OpenCode plugin entry", () => {
     const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-plugin-"));
     const hooks = await plugin.server(
       { directory: process.cwd(), worktree: process.cwd() },
-      { enabled: true, injectContext: false, queueDir },
+      { enabled: true, injectContext: false, queueDir, ...testCliOptions() },
     );
 
     await hooks["chat.message"]?.(
@@ -44,13 +44,16 @@ describe("OpenCode plugin entry", () => {
     );
 
     expect(readdirSync(queueDir).filter((entry) => entry.endsWith(".json"))).toHaveLength(1);
+    const file = readdirSync(queueDir).find((entry) => entry.endsWith(".json"));
+    const event = JSON.parse(readFileSync(join(queueDir, file ?? ""), "utf8")) as Record<string, unknown>;
+    expect(event.eventType).toBe("explicit_memory");
   });
 
   it("normalizes JSON-quoted message parts", async () => {
     const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-plugin-"));
     const hooks = await plugin.server(
       { directory: process.cwd(), worktree: process.cwd() },
-      { enabled: true, injectContext: false, queueDir },
+      { enabled: true, injectContext: false, queueDir, ...testCliOptions() },
     );
 
     await hooks["chat.message"]?.(
@@ -149,3 +152,10 @@ describe("OpenCode plugin entry", () => {
     });
   });
 });
+
+function testCliOptions(): { prefkitCommand: string; prefkitArgs: string[] } {
+  return {
+    prefkitCommand: process.execPath,
+    prefkitArgs: ["--import", "tsx/esm", join(process.cwd(), "packages/cli/src/main.ts")],
+  };
+}

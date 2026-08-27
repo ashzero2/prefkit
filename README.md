@@ -15,7 +15,7 @@ The current implementation supports:
 - queue replay for adapter-produced event files
 - OpenCode context injection and learner event queueing
 
-Agent adapters for Claude Code, Codex, OpenCode, and MCP are planned next. The core package is intentionally adapter-agnostic.
+The OpenCode adapter is available now; Claude Code, Codex, and MCP adapters are planned. The core package is intentionally adapter-agnostic.
 
 ## Install
 
@@ -253,7 +253,7 @@ Completed:
 
 Next:
 
-- OpenCode install helper and package hardening
+- Publish the `prefkit` CLI and `@prefkit/opencode` plugin packages
 - Phase 4 Claude Code adapter
 - Phase 6 Codex adapter
 - MCP tools for portable preference retrieval and explicit memory

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   createPreferenceStore,
   extractPreference,
   loadConfig,
   OllamaModel,
+  redactLearnerEvent,
   renderPreferenceContext,
   runDoctor,
+  scoreLearnerEvent,
+  validateLearnerEvent,
   type ListPreferencesOptions,
   type PreferenceExtractionResult,
   type PreferenceRecord,
@@ -117,6 +121,10 @@ async function main(argv: string[]): Promise<number> {
     } finally {
       store?.close();
     }
+  }
+
+  if (args.command === "queue") {
+    return queueEventFromStdin(args, loadResult);
   }
 
   if (args.command === "opencode") {
@@ -402,6 +410,58 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
   return report;
 }
 
+async function queueEventFromStdin(
+  args: ParsedArgs,
+  loadResult: ReturnType<typeof loadConfig>,
+): Promise<number> {
+  if (!args.flags.has("stdin-json")) {
+    throw new Error("queue requires --stdin-json.");
+  }
+
+  const input = await readStdin();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input) as unknown;
+  } catch (error) {
+    throw new Error(`queue received invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const validation = validateLearnerEvent(parsed);
+  if (!validation.ok) {
+    throw new Error(`queue received an invalid learner event: ${validation.errors.join(", ")}`);
+  }
+
+  const redacted = redactLearnerEvent(validation.value, loadResult.config.privacy);
+  const signal = scoreLearnerEvent(redacted.event, {
+    enabled: loadResult.config.learning.enabled,
+    mode: loadResult.config.learning.mode,
+    minSignalScore: loadResult.config.learning.minSignalScore,
+  });
+  if (!signal.shouldExtract && !args.flags.has("queue-weak-events")) {
+    console.log(`queued=false reason=${signal.skippedReason ?? "signal-below-threshold"} signalScore=${signal.score}`);
+    return 0;
+  }
+
+  const queueDir = flagOne(args, "queue-dir") ?? loadResult.config.learning.queuePath;
+  mkdirSync(queueDir, { recursive: true });
+  const path = join(queueDir, eventFileName(new Date(), randomUUID()));
+  writeFileSync(path, `${JSON.stringify(redacted.event, null, 2)}\n`, { mode: 0o600 });
+  console.log(`queued=true path=${path} signalScore=${signal.score}`);
+  return 0;
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function eventFileName(date: Date, id: string): string {
+  return `${date.toISOString().replace(/[:.]/g, "-")}-${id}.json`;
+}
+
 function queueFiles(queueDir: string, limit: number): string[] {
   const boundedLimit = Math.max(0, Math.min(Math.floor(limit), 500));
   if (boundedLimit === 0) {
@@ -654,6 +714,7 @@ Usage:
   prefkit export --format markdown
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]
+  prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
   prefkit doctor [--config .prefkit.json]
   prefkit opencode install [--write] [--opencode-config opencode.jsonc]

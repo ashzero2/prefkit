@@ -1,10 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultConfig } from "@prefkit/core";
-import { learnerEventFromOpenCodeContext, queueOpenCodeLearnerEvent } from "../src/queue.js";
+import {
+  learnerEventFromOpenCodeContext,
+  shouldQueueOpenCodeLearnerEvent,
+} from "../src/queue.js";
 
 describe("OpenCode learner queue", () => {
   it("classifies explicit memory prompts", () => {
@@ -31,70 +29,15 @@ describe("OpenCode learner queue", () => {
     expect(event.eventType).toBe("explicit_correction");
   });
 
-  it("skips weak prompts by default", () => {
-    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-queue-"));
-    const result = queueOpenCodeLearnerEvent({
-      event: {
-        messages: [{ role: "user", content: "Can you add a test?" }],
-      },
-      cwd: "/repo",
-      options: { queueDir },
-      loadConfig: () => config(queueDir),
-    });
-
-    expect(result).toEqual({ queued: false, skippedReason: "signal-below-threshold", signalScore: 0 });
+  it("avoids starting the CLI for weak prompts by default", () => {
+    expect(shouldQueueOpenCodeLearnerEvent("Can you add a test?", {})).toBe(false);
   });
 
-  it("writes redacted strong learner events", () => {
-    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-queue-"));
-    const result = queueOpenCodeLearnerEvent({
-      event: {
-        sessionID: "session_test",
-        messages: [{ role: "user", content: "No, use pnpm here. token=secret-token-value-123456" }],
-      },
-      cwd: "/repo",
-      options: { queueDir },
-      loadConfig: () => config(queueDir),
-      now: () => new Date("2026-08-26T07:00:00.000Z"),
-      id: () => "event-id",
-    });
-
-    expect(result.queued).toBe(true);
-    expect(result.path).toBe(join(queueDir, "2026-08-26T07-00-00-000Z-event-id.json"));
-    expect(existsSync(result.path ?? "")).toBe(true);
-    const queued = JSON.parse(readFileSync(result.path ?? "", "utf8")) as Record<string, unknown>;
-    expect(queued.userPrompt).toBe("No, use pnpm here. token=[REDACTED:secret-assignment]");
-    expect(queued.eventType).toBe("explicit_correction");
-    expect(queued.sessionId).toBe("session_test");
+  it("starts the CLI for stable preference language", () => {
+    expect(shouldQueueOpenCodeLearnerEvent("I prefer pnpm for this project.", {})).toBe(true);
   });
 
-  it("can queue weak events when explicitly enabled", () => {
-    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-queue-"));
-    const result = queueOpenCodeLearnerEvent({
-      event: {
-        messages: [{ role: "user", content: "Can you add a test?" }],
-      },
-      cwd: "/repo",
-      options: { queueDir, queueWeakEvents: true },
-      loadConfig: () => config(queueDir),
-      now: () => new Date("2026-08-26T07:00:00.000Z"),
-      id: () => "weak-id",
-    });
-
-    expect(result.queued).toBe(true);
+  it("can opt into starting the CLI for weak prompts", () => {
+    expect(shouldQueueOpenCodeLearnerEvent("Can you add a test?", { queueWeakEvents: true })).toBe(true);
   });
 });
-
-function config(queuePath: string) {
-  return {
-    sources: [],
-    warnings: [],
-    config: {
-      ...defaultConfig,
-      learning: {
-        ...defaultConfig.learning,
-        queuePath,
-      },
-    },
-  };
-}

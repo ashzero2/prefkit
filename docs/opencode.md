@@ -25,7 +25,8 @@ Flow:
 OpenCode chat.message hook
   -> extract user prompt from message parts
   -> cache it briefly by session ID
-  -> redact and queue strong learner events
+  -> send preference-shaped events to `prefkit queue` over stdin
+  -> Node CLI validates, redacts, gates, and writes the queue file
 OpenCode experimental.chat.messages.transform hook
   -> consume the cached prompt
   -> invoke the Node-based `prefkit context` CLI
@@ -54,10 +55,10 @@ If the project has no local OpenCode config yet, PrefKit can create `.opencode/o
 pnpm prefkit opencode install --write
 ```
 
-For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, override it:
+For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, use the `@prefkit/opencode` package once it is published:
 
 ```bash
-pnpm prefkit opencode install --adapter-package @prefkit/adapter-opencode
+pnpm prefkit opencode install --adapter-package @prefkit/opencode
 ```
 
 You can also add the plugin entry manually to `opencode.jsonc`:
@@ -90,7 +91,7 @@ You can also add the plugin entry manually to `opencode.jsonc`:
 
 If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the OpenCode worktree and then the user config path.
 
-The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit context` command. The returned block is merged into the existing first system message so providers do not need to handle a second system message. For a local checkout, `prefkit opencode install` writes the required `pnpm --dir ... prefkit` command automatically; for a packaged install, keep `prefkit` on `PATH` or set `prefkitCommand` and `prefkitArgs` explicitly.
+The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit` CLI for both context lookup and learner-event queueing. Queue input is sent over stdin, then the CLI validates, redacts, gates, and writes it. The published plugin package has no `@prefkit/core` or native SQLite dependency. The CLI must be installed separately and kept on `PATH`, or configured with `prefkitCommand` and `prefkitArgs`.
 
 When `notifyOnInjection` is `once-per-session` or `always`, the adapter asks OpenCode's TUI to show `PrefKit: Applied saved preferences` after successful injection. Toast failures never affect the model request. Use `off` for silent operation.
 
@@ -152,11 +153,13 @@ Expected:
 - queued files are redacted before they are written
 - replay performs local model learning later, outside the OpenCode hook
 
-## Next Adapter Chunk
+## Packaging Status
 
-Next work:
+The plugin package is prepared with a compiled `dist` entrypoint and no SQLite dependency. Validate it locally from this repository with:
 
-- install/doctor helpers for OpenCode config
-- install helper or generated config snippet
-- packaged adapter entrypoint hardening
-- richer event-stream capture after real OpenCode payload inspection
+```bash
+./node_modules/.bin/tsc -p packages/adapter-opencode/tsconfig.build.json
+npm pack --dry-run ./packages/adapter-opencode
+```
+
+The separate `prefkit` CLI package is still required for the `prefkit context` and `prefkit queue` commands. Publishing and installing that CLI is the next packaging batch.

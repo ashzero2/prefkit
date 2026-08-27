@@ -57,7 +57,7 @@ export interface OpenCodeInstallReport {
 }
 
 const pluginId = "prefkit.opencode";
-const defaultAdapterPackage = "@prefkit/adapter-opencode";
+const defaultAdapterPackage = "@prefkit/opencode";
 
 export function runOpenCodeDoctor(
   loadResult: ConfigLoadResult,
@@ -615,6 +615,8 @@ function queuePathCheck(entry: OpenCodePluginEntry | undefined, loadResult: Conf
 function isPrefKitSpecifier(value: string): boolean {
   return (
     value === defaultAdapterPackage ||
+    value === "@prefkit/adapter-opencode" ||
+    value.includes("@prefkit/opencode") ||
     value.includes("@prefkit/adapter-opencode") ||
     value.includes("adapter-opencode") ||
     value.includes("prefkit")

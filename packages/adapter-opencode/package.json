@@ -1,12 +1,18 @@
 {
-  "name": "@prefkit/adapter-opencode",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@prefkit/opencode",
+  "version": "0.1.0",
+  "description": "Bun-safe OpenCode plugin for PrefKit preference context and learner event capture.",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
   },
-  "dependencies": {
-    "@prefkit/core": "workspace:*"
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

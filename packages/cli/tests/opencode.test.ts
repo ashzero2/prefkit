@@ -160,6 +160,13 @@ describe("OpenCode doctor", () => {
 });
 
 describe("OpenCode install", () => {
+  it("accepts the publishable OpenCode package", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const report = installOpenCodeAdapter({ cwd, adapterPackage: "@prefkit/opencode" });
+
+    expect(report.snippet).toContain('"@prefkit/opencode"');
+  });
+
   it("generates a config snippet without writing by default", () => {
     const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
     const targetPath = join(cwd, ".opencode", "opencode.jsonc");

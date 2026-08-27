@@ -7,8 +7,14 @@ import type { PreferenceSearchOptions } from "@prefkit/core";
 import type {
   OpenCodeAdapterOptions,
   OpenCodeContextEvent,
-  OpenCodePreferenceContextInput,
 } from "./types.js";
+
+interface OpenCodePreferenceContextInput {
+  event: OpenCodeContextEvent;
+  cwd: string;
+  options: OpenCodeAdapterOptions;
+  loadConfig?: (input: { cwd: string; configPath?: string }) => ReturnType<typeof loadPrefKitConfig>;
+}
 
 const adapterAgent = "opencode";
 

@@ -1,5 +1,4 @@
-import { loadOpenCodePreferenceContextViaCli } from "./bridge.js";
-import { queueOpenCodeLearnerEvent } from "./queue.js";
+import { loadOpenCodePreferenceContextViaCli, queueOpenCodeLearnerEventViaCli } from "./bridge.js";
 import type {
   OpenCodeAdapterOptions,
   OpenCodeChatMessageInput,
@@ -32,7 +31,7 @@ const plugin: OpenCodePluginModule = {
         }
 
         try {
-          queueOpenCodeLearnerEvent({
+          await queueOpenCodeLearnerEventViaCli({
             event: chatEvent(input, output, prompt),
             cwd,
             options,
@@ -136,8 +135,12 @@ const plugin: OpenCodePluginModule = {
 };
 
 export default plugin;
-export { injectOpenCodePreferenceContextViaCli } from "./bridge.js";
-export { learnerEventFromOpenCodeContext, queueOpenCodeLearnerEvent } from "./queue.js";
+export {
+  injectOpenCodePreferenceContextViaCli,
+  loadOpenCodePreferenceContextViaCli,
+  queueOpenCodeLearnerEventViaCli,
+} from "./bridge.js";
+export { extractLatestUserPrompt, learnerEventFromOpenCodeContext, shouldQueueOpenCodeLearnerEvent } from "./queue.js";
 export type {
   OpenCodeAdapterOptions,
   OpenCodeContextEvent,

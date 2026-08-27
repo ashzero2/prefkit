@@ -1,15 +1,21 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type {
   OpenCodeAdapterOptions,
   OpenCodeContextEvent,
   OpenCodeSystemTransformOutput,
 } from "./types.js";
+import {
+  learnerEventFromOpenCodeContext,
+  shouldQueueOpenCodeLearnerEvent,
+  type OpenCodeLearnerEvent,
+} from "./queue.js";
 
 const execFileAsync = promisify(execFile);
 const defaultCommand = "prefkit";
 const defaultTimeoutMs = 5000;
 const maxOutputBytes = 64 * 1024;
+const maxQueueOutputBytes = 16 * 1024;
 
 export interface OpenCodeContextBridgeInput {
   output: OpenCodeSystemTransformOutput;
@@ -19,6 +25,12 @@ export interface OpenCodeContextBridgeInput {
 }
 
 export interface OpenCodeContextLookupInput {
+  event: OpenCodeContextEvent;
+  cwd: string;
+  options: OpenCodeAdapterOptions;
+}
+
+export interface OpenCodeQueueBridgeInput {
   event: OpenCodeContextEvent;
   cwd: string;
   options: OpenCodeAdapterOptions;
@@ -78,6 +90,36 @@ export async function loadOpenCodePreferenceContextViaCli(
   }
 }
 
+export async function queueOpenCodeLearnerEventViaCli(
+  input: OpenCodeQueueBridgeInput,
+): Promise<void> {
+  const prompt = latestPrompt(input.event);
+  if (!shouldQueueOpenCodeLearnerEvent(prompt, input.options)) {
+    return;
+  }
+
+  const event = learnerEventFromOpenCodeContext({
+    event: input.event,
+    cwd: input.cwd,
+    prompt,
+    maxPromptChars: boundedPromptLength(input.options.maxPromptChars),
+  });
+  const args = [
+    ...(input.options.prefkitArgs ?? []),
+    ...(input.options.configPath === undefined ? [] : ["--config", input.options.configPath]),
+    "queue",
+    "--stdin-json",
+  ];
+  if (input.options.queueDir !== undefined) {
+    args.push("--queue-dir", input.options.queueDir);
+  }
+  if (input.options.queueWeakEvents === true) {
+    args.push("--queue-weak-events");
+  }
+
+  await runQueueCommand(input.options.prefkitCommand ?? defaultCommand, args, input.cwd, event, input.options.contextTimeoutMs);
+}
+
 function appendSystemContext(system: string[], context: string): void {
   if (system.length === 0) {
     system.push(context);
@@ -108,6 +150,72 @@ function boundedTimeout(value: number | undefined): number {
     return defaultTimeoutMs;
   }
   return Math.max(100, Math.min(Math.floor(value), 10_000));
+}
+
+function boundedPromptLength(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return 4000;
+  }
+  return Math.max(1, Math.min(Math.floor(value), 20_000));
+}
+
+async function runQueueCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  event: OpenCodeLearnerEvent,
+  timeoutMs: number | undefined,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(new Error(`CLI queue timed out after ${boundedTimeout(timeoutMs)} ms`));
+    }, boundedTimeout(timeoutMs));
+
+    const finish = (error?: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      if (error === undefined) {
+        resolve();
+      } else {
+        reject(new Error(`CLI learner queue failed: ${error.message}${stderr.trim().length > 0 ? `; stderr: ${stderr.trim().slice(0, 1000)}` : ""}`));
+      }
+    };
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout = boundedOutput(stdout, chunk, maxQueueOutputBytes);
+    });
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr = boundedOutput(stderr, chunk, maxQueueOutputBytes);
+    });
+    child.once("error", (error) => finish(error));
+    child.once("close", (code) => {
+      if (code === 0) {
+        finish();
+      } else {
+        finish(new Error(`process exited with code ${code ?? "unknown"}${stdout.trim().length > 0 ? `; output: ${stdout.trim().slice(0, 1000)}` : ""}`));
+      }
+    });
+
+    child.stdin.end(JSON.stringify(event));
+  });
+}
+
+function boundedOutput(current: string, chunk: Buffer | string, maxBytes: number): string {
+  const next = current + chunk.toString();
+  return next.length <= maxBytes ? next : next.slice(0, maxBytes);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
