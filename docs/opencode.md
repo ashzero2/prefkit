@@ -165,4 +165,6 @@ pnpm --filter ./packages/cli pack --dry-run
 pnpm --filter @prefkit/opencode pack --dry-run
 ```
 
+The published OpenCode package exposes `./server` (and `main`) because OpenCode resolves npm server plugins through that entrypoint. Keep both fields when changing the package manifest.
+
 The plugin and CLI are intentionally separate: OpenCode loads `@prefkit/opencode`, while that plugin calls the separately installed `prefkit` executable from `@prefkit/cli` for context and queue operations. Publishing to npm is still a release step; use pnpm's publish flow so workspace dependency ranges are converted to regular semver ranges in the published manifests.
