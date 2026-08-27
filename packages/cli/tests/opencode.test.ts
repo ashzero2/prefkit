@@ -23,14 +23,14 @@ describe("OpenCode doctor", () => {
       configPath,
       `{
         // OpenCode supports JSONC config.
-        "plugins": [
-          {
-            "package": "./prefkit-adapter.ts",
-            "options": {
+        "plugin": [
+          [
+            "./prefkit-adapter.ts",
+            {
               "enabled": true,
               "queueEvents": true,
             },
-          },
+          ],
         ],
       }\n`,
     );
@@ -55,11 +55,13 @@ describe("OpenCode doctor", () => {
     writeFileSync(
       configPath,
       JSON.stringify({
-        plugins: [
-          {
-            package: "./adapter-opencode.ts",
-            options: { enabled: false },
-          },
+        plugin: [
+          [
+            "./adapter-opencode.ts",
+            {
+              enabled: false,
+            },
+          ],
         ],
       }),
     );
@@ -99,6 +101,62 @@ describe("OpenCode doctor", () => {
     expect(check(report, "opencode-config")?.ok).toBe(true);
     expect(check(report, "plugin-entry")?.message).toContain("prefkit.ts");
   });
+
+  it("still accepts beta plugins object entries", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-doctor-"));
+    const adapterPath = join(cwd, "adapter-opencode.ts");
+    const configPath = join(cwd, "opencode.jsonc");
+    writeFileSync(adapterPath, "export default {}\n");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        plugins: [
+          {
+            package: "./adapter-opencode.ts",
+            options: { enabled: true },
+          },
+        ],
+      }),
+    );
+
+    const report = runOpenCodeDoctor(loadResult(cwd), {
+      cwd,
+      opencodeConfigPath: configPath,
+      env: {},
+    });
+
+    expect(report.ok).toBe(false);
+    expect(check(report, "plugin-entry")?.ok).toBe(true);
+    expect(check(report, "opencode-config-style")?.ok).toBe(false);
+  });
+
+  it("flags object entries under the current plugin key", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-doctor-"));
+    const adapterPath = join(cwd, "adapter-opencode.ts");
+    const configPath = join(cwd, "opencode.jsonc");
+    writeFileSync(adapterPath, "export default {}\n");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        plugin: [
+          {
+            package: "./adapter-opencode.ts",
+            options: { enabled: true },
+          },
+        ],
+      }),
+    );
+
+    const report = runOpenCodeDoctor(loadResult(cwd), {
+      cwd,
+      opencodeConfigPath: configPath,
+      env: {},
+    });
+
+    expect(report.ok).toBe(false);
+    expect(check(report, "plugin-entry")?.ok).toBe(false);
+    expect(check(report, "opencode-config-style")?.message).toContain("plugin.0 is an object");
+  });
 });
 
 describe("OpenCode install", () => {
@@ -117,7 +175,8 @@ describe("OpenCode install", () => {
     expect(report.wrote).toBe(false);
     expect(report.targetPath).toBe(targetPath);
     expect(existsSync(targetPath)).toBe(false);
-    expect(report.snippet).toContain("\"package\": \"./prefkit.ts\"");
+    expect(report.snippet).toContain("\"plugin\": [");
+    expect(report.snippet).toContain("\"./prefkit.ts\"");
     expect(report.snippet).toContain("\"configPath\": \"./.prefkit.json\"");
     expect(report.snippet).toContain("\"queueDir\": \"./.prefkit/queue\"");
   });
@@ -138,7 +197,8 @@ describe("OpenCode install", () => {
     expect(existsSync(report.targetPath)).toBe(true);
     const config = readFileSync(report.targetPath, "utf8");
     expect(config).toContain("\"$schema\": \"https://opencode.ai/config.json\"");
-    expect(config).toContain("\"package\": \"../prefkit.ts\"");
+    expect(config).toContain("\"plugin\": [");
+    expect(config).toContain("\"../prefkit.ts\"");
   });
 
   it("does not write when a local adapter path is missing", () => {
@@ -178,7 +238,7 @@ describe("OpenCode install", () => {
     writeFileSync(
       configPath,
       JSON.stringify({
-        plugins: ["@prefkit/adapter-opencode"],
+        plugin: ["@prefkit/adapter-opencode"],
       }),
     );
 

@@ -193,7 +193,7 @@ function scopeReasons(
     reasons.push({
       code: "global-wording",
       description: "The user used wording that suggests the preference may apply globally.",
-      weight: 1,
+      weight: 4,
     });
   }
 

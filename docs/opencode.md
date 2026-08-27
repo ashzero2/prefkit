@@ -1,16 +1,18 @@
 # OpenCode Adapter
 
-PrefKit's OpenCode adapter targets the current OpenCode v2 plugin API.
+PrefKit's OpenCode adapter targets the stable plugin module API used by current `opencode` releases, including OpenCode 1.18.x.
 
-OpenCode v2 plugin docs describe:
+OpenCode plugin docs describe:
 
-- plugin entries in `plugins`
+- plugin entries in `plugin` for current `opencode` releases
+- beta/v2 plugin entries in `plugins`
 - local discovery under `.opencode/plugins/`
-- default plugin exports with `id` and `setup`
-- `ctx.session.hook("context", ...)` for modifying assembled context before model dispatch
+- default plugin exports with `id` and `server`
+- the stable `chat.message` hook for user-message capture
+- the installed runtime's `experimental.chat.system.transform` hook for context injection before model dispatch
 - hook failures failing the intercepted operation, so adapters must catch expected errors inside hooks
 
-The v2 plugin API is beta, so verify against your installed OpenCode version before relying on this in daily work.
+The plugin API is moving quickly, so verify against your installed OpenCode version before relying on this in daily work.
 
 ## Current Behavior
 
@@ -20,13 +22,18 @@ It can also queue compact learner events from strong user prompts.
 Flow:
 
 ```text
-OpenCode context hook
-  -> extract latest user prompt from request messages
-  -> load PrefKit config
-  -> query SQLite preferences
-  -> render bounded context
-  -> append to OpenCode system context
+OpenCode chat.message hook
+  -> extract user prompt from message parts
+  -> cache it briefly by session ID
   -> redact and queue strong learner events
+OpenCode experimental.chat.messages.transform hook
+  -> consume the cached prompt
+  -> invoke the Node-based `prefkit context` CLI
+  -> load config and query SQLite outside Bun
+  -> render bounded context
+  -> append to the latest user text part sent to the model
+OpenCode experimental.chat.system.transform hook
+  -> provide the same injection as a compatibility fallback
 ```
 
 The hook catches errors and logs a warning instead of throwing.
@@ -58,10 +65,10 @@ You can also add the plugin entry manually to `opencode.jsonc`:
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": [
-    {
-      "package": "/absolute/path/to/taste/packages/adapter-opencode/src/index.ts",
-      "options": {
+  "plugin": [
+    [
+      "/absolute/path/to/taste/packages/adapter-opencode/src/index.ts",
+      {
         "enabled": true,
         "injectContext": true,
         "queueEvents": true,
@@ -70,14 +77,22 @@ You can also add the plugin entry manually to `opencode.jsonc`:
         "limit": 8,
         "minConfidence": 0.45,
         "queueWeakEvents": false,
-        "maxPromptChars": 4000
+        "maxPromptChars": 4000,
+        "prefkitCommand": "prefkit",
+        "contextTimeoutMs": 5000,
+        "notifyOnInjection": "once-per-session",
+        "notificationDurationMs": 5000
       }
-    }
+    ]
   ]
 }
 ```
 
 If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the OpenCode worktree and then the user config path.
+
+The adapter does not open SQLite inside OpenCode's Bun runtime. It invokes the Node-based `prefkit context` command. The returned block is merged into the existing first system message so providers do not need to handle a second system message. For a local checkout, `prefkit opencode install` writes the required `pnpm --dir ... prefkit` command automatically; for a packaged install, keep `prefkit` on `PATH` or set `prefkitCommand` and `prefkitArgs` explicitly.
+
+When `notifyOnInjection` is `once-per-session` or `always`, the adapter asks OpenCode's TUI to show `PrefKit: Applied saved preferences` after successful injection. Toast failures never affect the model request. Use `off` for silent operation.
 
 Restart OpenCode after adding the plugin.
 
@@ -89,10 +104,11 @@ pnpm prefkit opencode doctor --opencode-config /path/to/project/opencode.jsonc
 
 Without `--opencode-config`, the doctor looks across standard OpenCode config locations and `.opencode/plugins/` discovery paths.
 
-If OpenCode is already running and does not reload the changed file, restart the service:
+If OpenCode is already running and does not reload the changed file, quit and restart the `opencode` TUI. For local diagnostics, use:
 
 ```bash
-opencode2 service restart
+opencode debug config
+opencode debug info
 ```
 
 ## Smoke Check
@@ -131,7 +147,7 @@ pnpm prefkit replay --queue-dir ~/.prefkit/queue --limit 10
 
 Expected:
 
-- strong preference/correction prompts create `.json` event files
+- explicit memory/correction prompts create `.json` event files
 - weak prompts do not queue by default
 - queued files are redacted before they are written
 - replay performs local model learning later, outside the OpenCode hook

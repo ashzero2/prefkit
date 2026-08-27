@@ -100,8 +100,8 @@ export function learnerEventFromOpenCodeContext(input: {
     assistantSummary: "OpenCode captured this user prompt before model dispatch.",
     repoContext: {},
     metadata: {
-      source: "opencode-context-hook",
-      queuedAtHook: "context",
+      source: "opencode-chat-message-hook",
+      queuedAtHook: "chat.message",
     },
   };
 }

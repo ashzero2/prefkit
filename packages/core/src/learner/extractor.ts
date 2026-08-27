@@ -7,6 +7,7 @@ import { calculatePreferenceConfidence } from "./confidence.js";
 import type { ConfidenceDecision, ConfidenceOptions } from "./confidence.js";
 import { scoreLearnerEvent } from "./prefilter.js";
 import type { LearningPrefilterDecision } from "./prefilter.js";
+import { normalizePreferenceScope } from "./scope.js";
 import { extractorJsonSchema, validateExtractorOutput, validateLearnerEvent } from "./schemas.js";
 import type { ExtractorOutput, LearnerEvent, ValidationFailure } from "./schemas.js";
 
@@ -73,6 +74,8 @@ const systemPrompt = [
   "Return only JSON that matches the provided schema.",
   "Learn concrete working preferences, project conventions, or corrections.",
   "Do not infer personality traits, moods, intent, private attributes, or broad facts about the user.",
+  "Use global scope for reusable guidance that applies to future similar tasks; use task scope only for one current task and set scopeValue to the exact sessionId from the evidence packet.",
+  "Never invent a task label as scopeValue. Guidance for a type of task is reusable guidance, not a single-task preference.",
   "If the evidence is situational, ambiguous, or not user-originated, set shouldLearn to false.",
 ].join(" ");
 
@@ -160,9 +163,11 @@ export async function extractPreference(
     };
   }
 
+  const extraction = normalizePreferenceScope(extractionResult.value, redacted.event);
+
   const confidenceInput = {
     event: redacted.event,
-    extraction: extractionResult.value,
+    extraction,
     options: {
       globalPromotionThreshold: options.learning.globalPromotionThreshold,
       requireConfirmationForGlobal: options.learning.requireConfirmationForGlobal,
@@ -188,7 +193,7 @@ export async function extractPreference(
     event: redacted.event,
     redactions: redacted.findings,
     prefilter,
-    extraction: extractionResult.value,
+    extraction,
     confidence,
     promptTokenEstimate,
     ...(usage === undefined ? {} : { usage }),

@@ -71,6 +71,80 @@ describe("preference extractor runner", () => {
     expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 80 });
   });
 
+  it("normalizes reusable task guidance to global scope", async () => {
+    const model = new MockJsonModel({
+      shouldLearn: true,
+      statement: "For app-naming tasks, always give 10 name options first.",
+      scopeType: "task",
+      scopeValue: "session-123",
+      category: "naming",
+      tags: ["app-naming", "output-quantity"],
+      evidenceType: "USER_EXPLICIT",
+      polarity: "positive",
+      proposedStatus: "candidate",
+      needsConfirmation: true,
+      rationale: "The user gave reusable naming workflow guidance.",
+      contradictions: [],
+    });
+    const result = await extractPreference(
+      {
+        agent: "opencode",
+        sessionId: "session-123",
+        eventType: "user_prompt",
+        userPrompt: "For app-naming tasks, always give me 10 name options first so I can choose one.",
+        assistantSummary: "",
+      },
+      model,
+      options(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.extraction.scopeType).toBe("global");
+    expect(result.extraction.scopeValue).toBeNull();
+    expect(result.confidence.confidence).toBe(0.75);
+    expect(result.confidence.status).toBe("candidate");
+  });
+
+  it("keeps one-off task guidance task-scoped", async () => {
+    const model = new MockJsonModel({
+      shouldLearn: true,
+      statement: "For this task, always give 10 name options first.",
+      scopeType: "task",
+      scopeValue: "session-123",
+      category: "naming",
+      tags: ["app-naming", "output-quantity"],
+      evidenceType: "USER_EXPLICIT",
+      polarity: "positive",
+      proposedStatus: "candidate",
+      needsConfirmation: true,
+      rationale: "The user gave guidance for the current task.",
+      contradictions: [],
+    });
+    const result = await extractPreference(
+      {
+        agent: "opencode",
+        sessionId: "session-123",
+        eventType: "user_prompt",
+        userPrompt: "For this task, always give me 10 name options first.",
+        assistantSummary: "",
+      },
+      model,
+      options(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.extraction.scopeType).toBe("task");
+    expect(result.extraction.scopeValue).toBe("session-123");
+  });
+
   it("rejects malformed model output without calculating confidence", async () => {
     const model = new MockJsonModel({
       shouldLearn: true,

@@ -186,7 +186,7 @@ pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
 
 ## OpenCode
 
-The OpenCode adapter uses OpenCode's v2 plugin `context` hook. It injects only bounded, relevant PrefKit context into the live prompt and queues strong learning events for later replay.
+The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued for later replay.
 
 ```bash
 pnpm prefkit opencode install
@@ -237,6 +237,7 @@ PrefKit is conservative by design:
 - model output is schema-validated
 - model-proposed `active` status is normalized back to `candidate`
 - deterministic confidence code decides status and score
+- reusable workflow guidance is separated from one-session task scope
 - global preferences require confirmation by default
 - skipped and oversized events do not call the model
 
