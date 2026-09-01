@@ -1,6 +1,7 @@
 import type { PreferenceSearchOptions, PreferenceSearchResult } from "../retrieval/types.js";
 
 export type PreferenceStatus = "candidate" | "active" | "pinned" | "suppressed" | "superseded" | "rejected";
+export type PreferenceReviewDecision = "accept" | "reject";
 export type ScopeType = "global" | "repository" | "path" | "task" | "agent";
 export type EvidencePolarity = "positive" | "negative" | "neutral";
 export type EvidenceSourceType = "USER_EXPLICIT" | "MODEL_EXTRACTED" | "AGENT_EVENT" | "IMPORT";
@@ -51,6 +52,8 @@ export interface RememberPreferenceInput {
   confidence?: number;
   status?: PreferenceStatus;
   source?: string;
+  /** Proposed predecessor; applied only when this candidate is accepted. */
+  supersedesId?: string | null;
   evidence?: {
     sessionId?: string | null;
     agent?: string | null;
@@ -78,5 +81,6 @@ export interface PreferenceStore {
   get(id: string): PreferenceWithEvidence | null;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;
+  review(id: string, decision: PreferenceReviewDecision): PreferenceRecord | null;
   exportMarkdown(): string;
 }

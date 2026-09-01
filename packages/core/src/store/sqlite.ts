@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { dirname, posix, win32 } from "node:path";
 import Database from "better-sqlite3";
 import type { Database as DatabaseHandle } from "better-sqlite3";
 import type { StoreConfig } from "../config/types.js";
@@ -13,6 +13,7 @@ import type {
   EvidenceSourceType,
   ListPreferencesOptions,
   PreferenceRecord,
+  PreferenceReviewDecision,
   PreferenceStatus,
   PreferenceStore,
   PreferenceWithEvidence,
@@ -64,7 +65,7 @@ export class SqlitePreferenceStore implements PreferenceStore {
       createdAt: now,
       updatedAt: now,
       lastSeenAt: now,
-      supersedesId: null,
+      supersedesId: input.supersedesId ?? null,
       metadata: input.metadata ?? {},
     };
 
@@ -83,11 +84,30 @@ export class SqlitePreferenceStore implements PreferenceStore {
       metadata: input.evidence?.metadata ?? {},
     };
 
+    const existing = this.findByEvidenceHash(evidence.evidenceHash);
+    if (existing !== null) {
+      return existing;
+    }
+
     const write = this.db.transaction(() => {
+      if (preference.supersedesId !== null && !this.preferenceExists(preference.supersedesId)) {
+        throw new Error(`Preference to supersede was not found: ${preference.supersedesId}`);
+      }
       this.insertPreference(preference);
       this.insertEvidence(evidence);
     });
-    write();
+    try {
+      write();
+    } catch (error) {
+      if (!isEvidenceUniqueError(error)) {
+        throw error;
+      }
+      const concurrent = this.findByEvidenceHash(evidence.evidenceHash);
+      if (concurrent === null) {
+        throw error;
+      }
+      return concurrent;
+    }
 
     return { preference, evidence: [evidence] };
   }
@@ -116,7 +136,9 @@ export class SqlitePreferenceStore implements PreferenceStore {
             .all(options.status, limit) as Row[]);
 
     const preferences = rows.map(rowToPreference);
-    return options.includeInactive === true ? preferences : preferences.filter((pref) => activeStatuses.has(pref.status));
+    return options.includeInactive === true || options.status !== undefined
+      ? preferences
+      : preferences.filter((pref) => activeStatuses.has(pref.status));
   }
 
   search(options: PreferenceSearchOptions): PreferenceSearchResult[] {
@@ -175,6 +197,37 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return this.updateStatus(id, "suppressed");
   }
 
+  review(id: string, decision: PreferenceReviewDecision): PreferenceRecord | null {
+    this.init();
+
+    const reviewed = this.db.transaction(() => {
+      const row = this.db.prepare("SELECT * FROM preferences WHERE id = ?").get(id) as Row | undefined;
+      if (row === undefined) {
+        return false;
+      }
+
+      const now = new Date().toISOString();
+      const status = decision === "accept" ? "active" : "rejected";
+      this.db.prepare("UPDATE preferences SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
+
+      if (decision === "accept") {
+        const supersedesId = nullableStringField(row, "supersedes_id");
+        if (supersedesId !== null) {
+          this.db
+            .prepare("UPDATE preferences SET status = 'superseded', updated_at = ? WHERE id = ?")
+            .run(now, supersedesId);
+        }
+      }
+      return true;
+    })();
+
+    if (!reviewed) {
+      return null;
+    }
+    const row = this.db.prepare("SELECT * FROM preferences WHERE id = ?").get(id) as Row | undefined;
+    return row === undefined ? null : rowToPreference(row);
+  }
+
   exportMarkdown(): string {
     const preferences = this.list({ includeInactive: true, limit: 500 });
     const lines = ["# PrefKit Preferences", "", `Exported: ${new Date().toISOString()}`, ""];
@@ -189,6 +242,9 @@ export class SqlitePreferenceStore implements PreferenceStore {
       lines.push(`- category: ${pref.category}`);
       lines.push(`- tags: ${pref.tags.length === 0 ? "none" : pref.tags.join(", ")}`);
       lines.push(`- source: ${pref.source}`);
+      if (pref.supersedesId !== null) {
+        lines.push(`- supersedes: ${pref.supersedesId}`);
+      }
       lines.push(`- updated: ${pref.updatedAt}`);
       lines.push("");
     }
@@ -283,6 +339,26 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return (this.db
       .prepare("SELECT * FROM evidence WHERE preference_id = ? ORDER BY created_at DESC")
       .all(preferenceId) as Row[]).map(rowToEvidence);
+  }
+
+  private findByEvidenceHash(hash: string): PreferenceWithEvidence | null {
+    const row = this.db.prepare("SELECT preference_id FROM evidence WHERE evidence_hash = ?").get(hash) as Row | undefined;
+    if (row === undefined) {
+      return null;
+    }
+    const preferenceId = stringField(row, "preference_id");
+    const preferenceRow = this.db.prepare("SELECT * FROM preferences WHERE id = ?").get(preferenceId) as Row | undefined;
+    if (preferenceRow === undefined) {
+      return null;
+    }
+    return {
+      preference: rowToPreference(preferenceRow),
+      evidence: this.evidenceFor(preferenceId),
+    };
+  }
+
+  private preferenceExists(id: string): boolean {
+    return this.db.prepare("SELECT 1 FROM preferences WHERE id = ?").get(id) !== undefined;
   }
 
   private searchFts(query: string, minConfidence: number, limit: number): Row[] {
@@ -494,7 +570,49 @@ function pathWithin(value: string | undefined, scopeValue: string | null): boole
   if (value === undefined) {
     return false;
   }
-  return value === scopeValue || value.startsWith(`${scopeValue.replace(/\/+$/u, "")}/`);
+  const valueStyle = pathStyle(value);
+  if (valueStyle !== pathStyle(scopeValue)) {
+    return false;
+  }
+
+  const pathApi = valueStyle === "windows" ? win32 : posix;
+  const normalizedValue = canonicalPath(value, pathApi);
+  const normalizedScope = canonicalPath(scopeValue, pathApi);
+  if (pathApi.isAbsolute(normalizedValue) !== pathApi.isAbsolute(normalizedScope)) {
+    return false;
+  }
+
+  const relative = pathApi.relative(normalizedScope, normalizedValue);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relative));
+}
+
+function pathStyle(value: string): "posix" | "windows" {
+  return /^[A-Za-z]:[\\/]/u.test(value) || value.includes("\\") ? "windows" : "posix";
+}
+
+function canonicalPath(value: string, pathApi: typeof posix | typeof win32): string {
+  const normalized = pathApi.normalize(value);
+  let existing = normalized;
+  const suffix: string[] = [];
+
+  while (!existsSync(existing) && pathApi.dirname(existing) !== existing) {
+    suffix.unshift(pathApi.basename(existing));
+    existing = pathApi.dirname(existing);
+  }
+
+  if (existsSync(existing)) {
+    try {
+      return pathApi.normalize(pathApi.join(realpathSync.native(existing), ...suffix));
+    } catch {
+      // Fall back to lexical normalization when the filesystem cannot resolve it.
+    }
+  }
+
+  return normalized;
+}
+
+function isEvidenceUniqueError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("UNIQUE constraint failed: evidence.evidence_hash");
 }
 
 function scorePreference(

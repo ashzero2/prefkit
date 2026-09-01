@@ -13,9 +13,62 @@ The current implementation supports:
 - deterministic signal gating and confidence scoring
 - single-event learning with optional persistence
 - queue replay for adapter-produced event files
+- reviewable contradiction candidates and supersession links
 - OpenCode context injection and learner event queueing
 
 The OpenCode adapter is available now; Claude Code, Codex, and MCP adapters are planned. The core package is intentionally adapter-agnostic.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  A[Agent adapter] -->|prompt| B[PrefKit CLI]
+  B -->|read-only lookup| C[(SQLite preferences)]
+  C -->|bounded relevant rules| A
+  A -->|strong learning event| Q[Queue JSON]
+  Q --> R[prefkit replay --persist]
+  R --> S[Redact and prefilter]
+  S --> L[Local Ollama extractor]
+  L --> V[Validate and score]
+  V --> C
+  R -->|success or skip| P[queue/processed]
+  R -->|failure| Q
+```
+
+| Part | Responsibility | Model call |
+| --- | --- | --- |
+| Adapter | Connects an agent CLI to PrefKit hooks | No |
+| CLI and core | Retrieve, render, store, review, and replay | Only during learning |
+| SQLite | Preferences, evidence, status, and provenance | No |
+| Ollama | Extracts one candidate preference from redacted evidence | Local only by default |
+
+```text
+~/.prefkit/
+  prefs.db              preferences and evidence
+  queue/*.json          pending events and retryable failures
+  queue/processed/*.json  successfully handled events
+```
+
+### OpenCode request flow
+
+```text
+user prompt
+  -> chat.message captures the prompt
+  -> prefkit context searches SQLite and renders bounded context
+  -> OpenCode model-message transform appends that context
+  -> model answers with the preference available
+```
+
+### Learning and review flow
+
+```text
+strong prompt/correction
+  -> queue/<event>.json
+  -> replay --persist
+  -> redact -> signal gate -> Ollama JSON -> schema validation -> confidence score
+  -> candidate/active preference + evidence in SQLite
+  -> contradiction candidate: prefkit why <id> -> prefkit review <id> --accept|--reject
+```
 
 ## Install
 
@@ -131,6 +184,17 @@ pnpm prefkit pin <pref_id>
 pnpm prefkit forget <pref_id>
 ```
 
+Review a candidate produced by learning:
+
+```bash
+pnpm prefkit list --status candidate
+pnpm prefkit why <pref_id>
+pnpm prefkit review <pref_id> --accept
+pnpm prefkit review <pref_id> --reject
+```
+
+Accepting a candidate with a supersession link activates it and marks the older preference as `superseded`. Rejecting it keeps the older preference unchanged.
+
 Export:
 
 ```bash
@@ -184,6 +248,8 @@ Replay queued events:
 pnpm prefkit replay --queue-dir examples/events --limit 10
 pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
 ```
+
+With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Model errors and invalid events stay in the queue for retry or inspection. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
 
 See [docs/model-qa.md](docs/model-qa.md) for the real-model tuning checklist.
 
@@ -250,19 +316,18 @@ PrefKit is conservative by design:
 - global preferences require confirmation by default
 - skipped and oversized events do not call the model
 
-## Current Roadmap
+## Roadmap
 
 Completed:
 
-- Phase 0: workspace, config, doctor
-- Phase 1: SQLite storage and manual preference commands
-- Phase 2: deterministic retrieval and bounded context rendering
-- Phase 3: learner schemas, redaction, prefilter, confidence engine, extractor runner, Ollama JSON generation, `learn`, persistence, replay
-- Phase 5a: OpenCode context adapter, learner event queue, setup doctor
+- Configuration, diagnostics, and SQLite storage
+- Manual preference commands and provenance inspection
+- Deterministic retrieval and bounded context rendering
+- Local learning, redaction, confidence scoring, persistence, and replay
+- OpenCode context injection, learner event queueing, and setup diagnostics
 
 Next:
 
-- Publish the versioned `@prefkit/cli`, `@prefkit/core`, and `@prefkit/opencode` packages to npm
-- Phase 4 Claude Code adapter
-- Phase 6 Codex adapter
+- Claude Code adapter
+- Codex adapter
 - MCP tools for portable preference retrieval and explicit memory

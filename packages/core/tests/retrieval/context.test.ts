@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -100,6 +100,42 @@ describe("retrieval and context rendering", () => {
       expect(rendered.tokenEstimate).toBeLessThanOrEqual(45);
       expect(rendered.text).toContain("Relevant user preferences:");
       expect(rendered.text).not.toContain("Verify collisions only after a shortlist exists.");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("matches repository scopes through symlinks and normalizes boundaries", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    const root = mkdtempSync(join(tmpdir(), "prefkit-path-scope-"));
+    const realRepository = join(root, "real-repository");
+    const linkedRepository = join(root, "linked-repository");
+    mkdirSync(realRepository);
+    symlinkSync(realRepository, linkedRepository, "dir");
+
+    try {
+      const scoped = store.remember({
+        statement: "Use repository-specific naming conventions.",
+        scopeType: "repository",
+        scopeValue: realRepository,
+        category: "conventions",
+      });
+      const other = store.remember({
+        statement: "Use the other repository convention.",
+        scopeType: "repository",
+        scopeValue: `${realRepository}-other`,
+        category: "conventions",
+      });
+
+      const results = store.search({
+        prompt: "Use repository-specific naming conventions.",
+        cwd: join(linkedRepository, "nested", ".."),
+        limit: 5,
+      });
+      const ids = results.map((result) => result.preference.id);
+
+      expect(ids).toContain(scoped.preference.id);
+      expect(ids).not.toContain(other.preference.id);
     } finally {
       store.close();
     }
