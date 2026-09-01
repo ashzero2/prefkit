@@ -116,6 +116,12 @@ function applyEnv(config: PrefKitConfig, env: NodeJS.ProcessEnv): PrefKitConfig 
   if (env.PREFKIT_MODEL_THINK) {
     next.localModel.think = parseLocalModelThinkMode(env.PREFKIT_MODEL_THINK, next.localModel.think);
   }
+  if (env.PREFKIT_WORKER_POLL_MS) {
+    next.learning.workerPollMs = parsePositiveInteger(env.PREFKIT_WORKER_POLL_MS, next.learning.workerPollMs);
+  }
+  if (env.PREFKIT_WORKER_BATCH_SIZE) {
+    next.learning.workerBatchSize = parsePositiveInteger(env.PREFKIT_WORKER_BATCH_SIZE, next.learning.workerBatchSize);
+  }
   if (env.PREFKIT_REDACT_SECRETS) {
     next.privacy.redactSecrets = parseBoolean(
       env.PREFKIT_REDACT_SECRETS,
@@ -202,6 +208,11 @@ function parseLocalModelThinkMode(
 function parseNumber(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parsePositiveInteger(value: string, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseBoolean(value: string, fallback: boolean): boolean {

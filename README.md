@@ -12,7 +12,7 @@ The current implementation supports:
 - redaction before model calls
 - deterministic signal gating and confidence scoring
 - single-event learning with optional persistence
-- queue replay for adapter-produced event files
+- automatic background queue learning with manual replay recovery
 - reviewable contradiction candidates and supersession links
 - OpenCode context injection and learner event queueing
 
@@ -26,7 +26,9 @@ flowchart TD
   B -->|read-only lookup| C[(SQLite preferences)]
   C -->|bounded relevant rules| A
   A -->|strong learning event| Q[Queue JSON]
-  Q --> R[prefkit replay --persist]
+  A -->|ensure one worker| W[prefkit worker]
+  Q --> W
+  W --> R[Replay one bounded batch]
   R --> S[Redact and prefilter]
   S --> L[Local Ollama extractor]
   L --> V[Validate and score]
@@ -47,6 +49,7 @@ flowchart TD
   prefs.db              preferences and evidence
   queue/*.json          pending events and retryable failures
   queue/processed/*.json  successfully handled events
+  queue/.worker.lock    single-worker lease
 ```
 
 ### OpenCode request flow
@@ -64,7 +67,7 @@ user prompt
 ```text
 strong prompt/correction
   -> queue/<event>.json
-  -> replay --persist
+  -> background worker
   -> redact -> signal gate -> Ollama JSON -> schema validation -> confidence score
   -> candidate/active preference + evidence in SQLite
   -> contradiction candidate: prefkit why <id> -> prefkit review <id> --accept|--reject
@@ -122,6 +125,8 @@ PREFKIT_OLLAMA_BASE_URL=http://127.0.0.1:11434
 PREFKIT_OLLAMA_MODEL=qwen3:4b
 PREFKIT_MODEL_TEMPERATURE=0
 PREFKIT_MODEL_TIMEOUT_MS=20000
+PREFKIT_WORKER_POLL_MS=5000
+PREFKIT_WORKER_BATCH_SIZE=1
 PREFKIT_REDACT_SECRETS=true
 ```
 
@@ -251,6 +256,14 @@ pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
 
 With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Model errors and invalid events stay in the queue for retry or inspection. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
 
+During normal adapter use, the worker starts automatically after the first strong learning event. Run it manually when recovering a queue or using an adapter that does not provide auto-start:
+
+```bash
+pnpm prefkit worker --queue-dir ~/.prefkit/queue
+```
+
+Only one worker owns a queue at a time. Multiple agent sessions can append events concurrently; the worker processes them sequentially and context retrieval can continue while SQLite writes are happening.
+
 See [docs/model-qa.md](docs/model-qa.md) for the real-model tuning checklist.
 
 Weak events are skipped before any model call:
@@ -261,7 +274,7 @@ pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
 
 ## OpenCode
 
-The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued for later replay.
+The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued immediately, and the adapter starts one detached PrefKit worker so learning happens outside the prompt path.
 
 ```bash
 pnpm prefkit opencode install

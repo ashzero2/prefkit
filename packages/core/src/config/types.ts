@@ -17,6 +17,8 @@ export interface LearningConfig {
   globalPromotionThreshold: number;
   requireConfirmationForGlobal: boolean;
   queuePath: string;
+  workerPollMs: number;
+  workerBatchSize: number;
 }
 
 export interface LocalModelConfig {

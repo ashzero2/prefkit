@@ -7,6 +7,11 @@ agent hooks/plugins/MCP
   -> adapter package
   -> @prefkit/core
   -> SQLite/config/model/retrieval services
+
+learning event queue
+  -> one locked background worker
+  -> redaction/prefilter/model extraction
+  -> SQLite preference store
 ```
 
 The core must not import Claude, Codex, OpenCode, or MCP-specific code. Adapters translate host events into core calls and must fail open for context injection.
@@ -17,11 +22,10 @@ Retrieval is deterministic. The store uses SQLite FTS5 for the first candidate s
 
 Learning is separate from retrieval. Agent adapters should write compact event files or call core learner APIs; they should not run model extraction in hot prompt-injection hooks. The learner path validates the event, redacts evidence, applies a deterministic prefilter, calls the configured JSON model only for strong signals, validates model output, and scores confidence in code.
 
+The CLI worker watches the queue and also polls it periodically because filesystem notifications are not guaranteed on every platform. It processes one bounded batch at a time, keeps failures retryable, and holds an exclusive per-queue lease. Multiple adapters and OpenCode sessions may enqueue concurrently; only the worker writes learned preferences. SQLite WAL allows retrieval to continue while the worker writes, while the worker's serialized batches respect SQLite's single-writer behavior.
+
 The local model does not decide final status. It proposes an extractor output; PrefKit normalizes model-proposed `active` back to `candidate`, forces confirmation, and then applies deterministic confidence rules. Global preferences remain candidates by default unless the user pins or later policy explicitly allows promotion.
 
 Reusable wording such as "for naming tasks, always..." is normalized to global scope when the model incorrectly returns an invented task label. Task scope is retained only when it is tied to the exact event session, preventing a reusable rule from disappearing after one conversation.
 
-Phase 0 includes the monorepo scaffold, configuration loader, local model health probe, and `prefkit doctor`.
-Phase 1 adds migrations, explicit manual memory commands, provenance inspection, status mutation, and Markdown export.
-Phase 2 adds preference search, scope-aware ranking, token-budgeted rendering, and `prefkit context`.
-Phase 3 adds learner validation schemas, redaction, deterministic signal gating, confidence scoring, local extractor orchestration, Ollama structured JSON generation, `prefkit learn`, opt-in persistence, and queue replay.
+Learning uses validated, redacted event packets, deterministic signal gating, confidence scoring, local extractor orchestration, structured model output, opt-in persistence, and retryable queue replay.

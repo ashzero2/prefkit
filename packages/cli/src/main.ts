@@ -28,6 +28,7 @@ import {
   type OpenCodeInstallReport,
 } from "./opencode.js";
 import { archiveReplayFile, queueFiles } from "./replay.js";
+import { runBackgroundWorker } from "./worker.js";
 
 interface ParsedArgs {
   command: string | undefined;
@@ -122,6 +123,60 @@ async function main(argv: string[]): Promise<number> {
       return report.failed === 0 ? 0 : 1;
     } finally {
       store?.close();
+    }
+  }
+
+  if (args.command === "worker") {
+    const queueDir = flagOne(args, "queue-dir") ?? loadResult.config.learning.queuePath;
+    const intervalMs = parsePositiveIntegerFlag(
+      flagOne(args, "interval-ms"),
+      loadResult.config.learning.workerPollMs,
+    );
+    const batchSize = parsePositiveIntegerFlag(
+      flagOne(args, "batch-size"),
+      loadResult.config.learning.workerBatchSize,
+    );
+
+    if (!loadResult.config.learning.enabled || loadResult.config.learning.mode === "off") {
+      console.log("PrefKit worker: learning is disabled.");
+      return 0;
+    }
+    if (loadResult.config.learning.mode === "manual") {
+      console.log("PrefKit worker: learning mode is manual; use prefkit replay --persist.");
+      return 0;
+    }
+
+    const store = createPreferenceStore(loadResult.config.store);
+    try {
+      const result = await runBackgroundWorker({
+        queueDir,
+        intervalMs,
+        batchSize,
+        once: args.flags.has("once"),
+        processBatch: async () => {
+          const report = await replayEvents({
+            queueDir,
+            limit: batchSize,
+            persist: true,
+            store,
+            config: loadResult.config,
+          });
+          if (args.flags.has("once") || report.total > 0) {
+            printReplayReport(report);
+          }
+          return report;
+        },
+        onError: (error) => {
+          console.error(`PrefKit worker batch failed: ${error instanceof Error ? error.message : String(error)}`);
+        },
+      });
+      console.log(`PrefKit worker: ${result.status}`);
+      if (result.status === "already-running") {
+        console.log(`queueDir=${queueDir}`);
+      }
+      return 0;
+    } finally {
+      store.close();
     }
   }
 
@@ -354,6 +409,17 @@ function parseNumberFlag(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Expected a number, got: ${value}`);
+  }
+  return parsed;
+}
+
+function parsePositiveIntegerFlag(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, got: ${value}`);
   }
   return parsed;
 }
@@ -729,6 +795,8 @@ Usage:
   prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
     Successful and skipped persisted events move to queue/processed; failures remain for retry.
+  prefkit worker [--queue-dir ~/.prefkit/queue] [--interval-ms 5000] [--batch-size 1] [--once]
+    Watches the queue and persists learning events in the background. One worker runs per queue.
   prefkit doctor [--config .prefkit.json]
   prefkit opencode install [--write] [--opencode-config opencode.jsonc]
   prefkit opencode doctor [--opencode-config opencode.jsonc]

@@ -13,6 +13,8 @@ export const defaultConfig: PrefKitConfig = {
     globalPromotionThreshold: 8,
     requireConfirmationForGlobal: true,
     queuePath: "~/.prefkit/queue",
+    workerPollMs: 5000,
+    workerBatchSize: 1,
   },
   localModel: {
     provider: "ollama",

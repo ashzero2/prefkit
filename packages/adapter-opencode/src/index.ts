@@ -1,4 +1,8 @@
-import { loadOpenCodePreferenceContextViaCli, queueOpenCodeLearnerEventViaCli } from "./bridge.js";
+import {
+  ensureOpenCodeWorkerViaCli,
+  loadOpenCodePreferenceContextViaCli,
+  queueOpenCodeLearnerEventViaCli,
+} from "./bridge.js";
 import type {
   OpenCodeAdapterOptions,
   OpenCodeChatMessageInput,
@@ -31,11 +35,14 @@ const plugin: OpenCodePluginModule = {
         }
 
         try {
-          await queueOpenCodeLearnerEventViaCli({
+          const queued = await queueOpenCodeLearnerEventViaCli({
             event: chatEvent(input, output, prompt),
             cwd,
             options,
           });
+          if (queued) {
+            ensureOpenCodeWorkerViaCli({ cwd, options });
+          }
         } catch (error) {
           console.warn(`[prefkit] learner event queue skipped: ${errorMessage(error)}`);
         }
@@ -139,6 +146,7 @@ export {
   injectOpenCodePreferenceContextViaCli,
   loadOpenCodePreferenceContextViaCli,
   queueOpenCodeLearnerEventViaCli,
+  ensureOpenCodeWorkerViaCli,
 } from "./bridge.js";
 export { extractLatestUserPrompt, learnerEventFromOpenCodeContext, shouldQueueOpenCodeLearnerEvent } from "./queue.js";
 export type {
@@ -170,6 +178,7 @@ function adapterOptions(input: Record<string, unknown> | undefined): OpenCodeAda
       ? { prefkitArgs: input.prefkitArgs }
       : {}),
     ...(typeof input.contextTimeoutMs === "number" ? { contextTimeoutMs: input.contextTimeoutMs } : {}),
+    ...(typeof input.autoStartWorker === "boolean" ? { autoStartWorker: input.autoStartWorker } : {}),
     ...(isNotificationMode(input.notifyOnInjection) ? { notifyOnInjection: input.notifyOnInjection } : {}),
     ...(typeof input.notificationDurationMs === "number"
       ? { notificationDurationMs: input.notificationDurationMs }
