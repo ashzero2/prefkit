@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/prefkit-context.mjs"
+            ],
+            "timeout": 5,
+            "statusMessage": "Loading PrefKit context"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/prefkit-learn.mjs"
+            ],
+            "async": true,
+            "timeout": 5,
+            "statusMessage": "Saving PrefKit preference"
+          }
+        ]
+      }
+    ]
+  }
+}

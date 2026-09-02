@@ -14,9 +14,9 @@ The current implementation supports:
 - single-event learning with optional persistence
 - automatic background queue learning with manual replay recovery
 - reviewable contradiction candidates and supersession links
-- OpenCode context injection and learner event queueing
+- OpenCode and Claude Code context injection and learner event queueing
 
-The OpenCode adapter is available now; Claude Code, Codex, and MCP adapters are planned. The core package is intentionally adapter-agnostic.
+The OpenCode and Claude Code adapters are available now; Codex and MCP adapters are planned. The core package is intentionally adapter-agnostic.
 
 ## Architecture
 
@@ -283,6 +283,19 @@ pnpm prefkit opencode doctor
 
 See [docs/opencode.md](docs/opencode.md) for config examples, smoke checks, and replay flow.
 
+## Claude Code
+
+The Claude Code plugin uses the documented `UserPromptSubmit` hook. One synchronous hook requests bounded context through `prefkit context`; a separate asynchronous hook queues strong preference prompts and starts the background worker after the queue accepts the event. The learning hook emits no stdout, so queue diagnostics cannot be mistaken for Claude context.
+
+For local testing from this repository:
+
+```bash
+npm install --global @prefkit/cli
+claude --plugin-dir packages/adapter-claude
+```
+
+The CLI must be available as `prefkit` on `PATH`. For a custom executable, set `PREFKIT_COMMAND`; set `PREFKIT_ARGS` to a JSON string array when a wrapper such as pnpm is required. See [docs/claude.md](docs/claude.md) for configuration and checks.
+
 ## Event JSON
 
 Adapters should write compact event packets like this:
@@ -338,9 +351,9 @@ Completed:
 - Deterministic retrieval and bounded context rendering
 - Local learning, redaction, confidence scoring, persistence, and replay
 - OpenCode context injection, learner event queueing, and setup diagnostics
+- Claude Code context injection, asynchronous learner event queueing, and packaged plugin layout
 
 Next:
 
-- Claude Code adapter
 - Codex adapter
 - MCP tools for portable preference retrieval and explicit memory

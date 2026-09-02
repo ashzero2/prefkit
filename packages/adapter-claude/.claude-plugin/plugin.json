@@ -1,0 +1,8 @@
+{
+  "name": "prefkit",
+  "version": "0.1.0",
+  "description": "Injects relevant PrefKit preferences into Claude Code prompts.",
+  "author": {
+    "name": "PrefKit contributors"
+  }
+}
