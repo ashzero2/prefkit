@@ -51,8 +51,12 @@ const secretPatterns: RedactionPattern[] = [
   {
     kind: "secret-assignment",
     pattern:
-      /\b(api[_-]?key|auth(?:orization)?|client[_-]?secret|password|passwd|pwd|secret|token)\b(\s*[:=]\s*)(["']?)([^\s"',;]{8,})(["']?)/gi,
+      /(\b(?:[a-z0-9]+[_-])*(?:api[_-]?key|auth(?:orization)?|client[_-]?secret|password|passwd|pwd|secret|token)(?:[_-][a-z0-9]+)*)\b(\s*[:=]\s*)(["']?)([^\s"',;]{8,})(["']?)/gi,
     replacement: (...args: string[]) => {
+      if ((args[4] ?? "").startsWith("[REDACTED:")) {
+        return args[0] ?? "";
+      }
+
       const key = args[1] ?? "";
       const separator = args[2] ?? "";
       const quoteStart = args[3] ?? "";

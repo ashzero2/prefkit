@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { redactLearnerEvent, redactText, validateLearnerEvent } from "../../src/index.js";
+import secretCorpus from "./fixtures/secret-corpus.json" with { type: "json" };
+
+interface SecretCorpusCase {
+  name: string;
+  input: string;
+  secret: string;
+  kind: string;
+}
 
 const options = {
   redactSecrets: true,
@@ -12,6 +20,13 @@ const longOptions = {
 };
 
 describe("redaction", () => {
+  it.each(secretCorpus as SecretCorpusCase[])("redacts $name", ({ input, secret, kind }) => {
+    const redacted = redactText(input, longOptions);
+
+    expect(redacted.value).not.toContain(secret);
+    expect(redacted.findings.map((finding) => finding.kind)).toContain(kind);
+  });
+
   it("redacts common token and credential shapes from text", () => {
     const input = [
       "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
