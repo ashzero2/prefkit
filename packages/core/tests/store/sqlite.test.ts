@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -106,6 +106,30 @@ describe("SqlitePreferenceStore", () => {
       expect(markdown).toContain("- category: naming");
     } finally {
       store.close();
+    }
+  });
+
+  it("creates a restorable SQLite backup", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "prefkit-store-backup-"));
+    const sourcePath = join(directory, "prefs.db");
+    const backupPath = join(directory, "backups", "prefs.db");
+    const source = createPreferenceStore({ ...testStoreConfig(), path: sourcePath });
+
+    try {
+      const remembered = source.remember({ statement: "Prefer colocated tests." });
+      await source.backup(backupPath);
+
+      expect(existsSync(backupPath)).toBe(true);
+
+      const restored = createPreferenceStore({ ...testStoreConfig(), path: backupPath });
+      try {
+        expect(restored.get(remembered.preference.id)?.preference.statement).toBe("Prefer colocated tests.");
+        expect(restored.get(remembered.preference.id)?.evidence).toHaveLength(1);
+      } finally {
+        restored.close();
+      }
+    } finally {
+      source.close();
     }
   });
 });

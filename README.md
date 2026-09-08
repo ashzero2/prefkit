@@ -207,6 +207,14 @@ Export:
 pnpm prefkit export --format markdown
 ```
 
+Create a SQLite backup without overwriting an existing file:
+
+```bash
+pnpm prefkit backup --output ./backups/prefs.db
+```
+
+The backup includes preferences and evidence and can be opened as a normal PrefKit store.
+
 ## Context Retrieval
 
 `prefkit context` is deterministic and read-only. It does not call a model.

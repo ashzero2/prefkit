@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 import {
   createPreferenceStore,
   extractPreference,
+  expandHome,
   loadConfig,
   OllamaModel,
   redactLearnerEvent,
@@ -210,6 +212,29 @@ async function main(argv: string[]): Promise<number> {
   if (args.command === "mcp") {
     await runStdioServer(args.configPath === undefined ? {} : { configPath: args.configPath });
     return 0;
+  }
+
+  if (args.command === "backup") {
+    const output = flagOne(args, "output");
+    if (output === undefined || output.trim().length === 0) {
+      throw new Error("backup requires --output path.");
+    }
+    const destination = isAbsolute(expandHome(output)) ? expandHome(output) : resolve(process.cwd(), output);
+    if (existsSync(destination)) {
+      throw new Error(`Backup destination already exists: ${destination}`);
+    }
+    if (resolve(loadResult.config.store.path) === resolve(destination)) {
+      throw new Error("Backup destination must differ from the active store.");
+    }
+
+    const store = createPreferenceStore(loadResult.config.store);
+    try {
+      await store.backup(destination);
+      console.log(`Created PrefKit backup: ${destination}`);
+      return 0;
+    } finally {
+      store.close();
+    }
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -890,6 +915,7 @@ Usage:
   prefkit forget <id>
   prefkit review <id> --accept|--reject
   prefkit export --format markdown
+  prefkit backup --output ./backups/prefs.db
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]
   prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]

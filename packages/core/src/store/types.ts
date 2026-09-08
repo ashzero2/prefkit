@@ -75,6 +75,7 @@ export interface ListPreferencesOptions {
 export interface PreferenceStore {
   init(): void;
   close(): void;
+  backup(destination: string): Promise<void>;
   remember(input: RememberPreferenceInput): PreferenceWithEvidence;
   list(options?: ListPreferencesOptions): PreferenceRecord[];
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];

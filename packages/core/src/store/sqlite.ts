@@ -42,6 +42,12 @@ export class SqlitePreferenceStore implements PreferenceStore {
     this.db.close();
   }
 
+  async backup(destination: string): Promise<void> {
+    this.init();
+    mkdirSync(dirname(destination), { recursive: true });
+    await this.db.backup(destination);
+  }
+
   remember(input: RememberPreferenceInput): PreferenceWithEvidence {
     this.init();
 
