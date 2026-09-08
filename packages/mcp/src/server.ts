@@ -42,6 +42,7 @@ const readAnnotations = {
 export interface ServerDeps {
   store: PreferenceStore;
   injection: InjectionConfig;
+  metricsEnabled?: boolean;
   version?: string;
 }
 
@@ -85,7 +86,7 @@ export function createPrefKitServer(deps: ServerDeps): McpServer {
       }),
       annotations: readAnnotations,
     },
-    (args) => invoke(() => recallPreferences(deps.store, deps.injection, args)),
+    (args) => invoke(() => recallPreferences(deps.store, deps.injection, args, deps.metricsEnabled === true)),
   );
 
   server.registerTool(
@@ -271,7 +272,11 @@ export async function runStdioServer(options: StdioOptions = {}): Promise<void> 
   const store = createPreferenceStore(loadResult.config.store);
   store.init();
   const handle = serveStdio(() =>
-    createPrefKitServer({ store, injection: loadResult.config.injection }),
+    createPrefKitServer({
+      store,
+      injection: loadResult.config.injection,
+      metricsEnabled: loadResult.config.metrics.enabled,
+    }),
   );
   console.error(`[prefkit-mcp] serving tools over stdio (store=${loadResult.config.store.path})`);
 

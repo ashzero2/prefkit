@@ -90,4 +90,14 @@ export const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    id: 2,
+    name: "local-context-metrics",
+    sql: `
+      CREATE TABLE IF NOT EXISTS metrics (
+        name TEXT PRIMARY KEY,
+        value INTEGER NOT NULL CHECK (value >= 0)
+      );
+    `,
+  },
 ];

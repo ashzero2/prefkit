@@ -159,6 +159,34 @@ describe("SqlitePreferenceStore", () => {
             neutral: 1,
           },
         },
+        metrics: {
+          contextRequests: 0,
+          contextMatches: 0,
+          contextHits: 0,
+          contextInjectedRules: 0,
+          contextInjectedTokens: 0,
+          contextHitRate: 0,
+        },
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("records context counters without storing prompt content", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.recordContext({ matchedRules: 3, injectedRules: 2, tokenEstimate: 44 });
+      store.recordContext({ matchedRules: 0, injectedRules: 0, tokenEstimate: 0 });
+      store.recordContext({ matchedRules: 1, injectedRules: 1, tokenEstimate: 18 });
+
+      expect(store.stats().metrics).toEqual({
+        contextRequests: 3,
+        contextMatches: 4,
+        contextHits: 2,
+        contextInjectedRules: 3,
+        contextInjectedTokens: 62,
+        contextHitRate: 2 / 3,
       });
     } finally {
       store.close();

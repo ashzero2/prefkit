@@ -47,4 +47,7 @@ export const defaultConfig: PrefKitConfig = {
     minConfidence: 0.45,
     failOpen: true,
   },
+  metrics: {
+    enabled: false,
+  },
 };

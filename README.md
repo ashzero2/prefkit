@@ -183,13 +183,13 @@ Inspect provenance:
 pnpm prefkit why <pref_id>
 ```
 
-Inspect local preference and evidence counts without sending telemetry:
+Inspect local preference, evidence, and (when enabled) context counters without sending telemetry:
 
 ```bash
 pnpm prefkit stats
 ```
 
-The inventory reports status, evidence source, and polarity counts. It does not claim retrieval hit rate or prevented corrections; those require explicit event instrumentation that is not enabled yet.
+The inventory reports status, evidence source, and polarity counts. With `metrics.enabled` or `PREFKIT_METRICS_ENABLED=true`, it also reports local context requests, match/hit counts, hit rate, and estimated injected tokens. Metrics are disabled by default and do not measure prevented corrections yet.
 
 Pin or suppress a preference:
 

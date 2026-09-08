@@ -11,6 +11,7 @@ import type {
   EvidencePolarity,
   EvidenceRecord,
   EvidenceSourceType,
+  ContextMetricInput,
   ListPreferencesOptions,
   PreferenceRecord,
   PreferenceReviewDecision,
@@ -228,6 +229,12 @@ export class SqlitePreferenceStore implements PreferenceStore {
       }
     }
 
+    const contextRequests = this.metricValue("context_requests");
+    const contextMatches = this.metricValue("context_matches");
+    const contextHits = this.metricValue("context_hits");
+    const contextInjectedRules = this.metricValue("context_injected_rules");
+    const contextInjectedTokens = this.metricValue("context_injected_tokens");
+
     return {
       preferences: {
         total: Object.values(byStatus).reduce((total, count) => total + count, 0),
@@ -238,7 +245,35 @@ export class SqlitePreferenceStore implements PreferenceStore {
         bySourceType,
         byPolarity,
       },
+      metrics: {
+        contextRequests,
+        contextMatches,
+        contextHits,
+        contextInjectedRules,
+        contextInjectedTokens,
+        contextHitRate: contextRequests === 0 ? 0 : contextHits / contextRequests,
+      },
     };
+  }
+
+  recordContext(input: ContextMetricInput): void {
+    this.init();
+
+    const matchedRules = nonNegativeInteger(input.matchedRules);
+    const injectedRules = nonNegativeInteger(input.injectedRules);
+    const tokenEstimate = nonNegativeInteger(input.tokenEstimate);
+    const increment = this.db.prepare(
+      `INSERT INTO metrics (name, value) VALUES (?, ?)
+       ON CONFLICT(name) DO UPDATE SET value = metrics.value + excluded.value`,
+    );
+    const record = this.db.transaction(() => {
+      increment.run("context_requests", 1);
+      increment.run("context_matches", matchedRules);
+      increment.run("context_hits", injectedRules > 0 ? 1 : 0);
+      increment.run("context_injected_rules", injectedRules);
+      increment.run("context_injected_tokens", tokenEstimate);
+    });
+    record();
   }
 
   pin(id: string): PreferenceRecord | null {
@@ -490,6 +525,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return this.db.prepare("SELECT 1 FROM preferences WHERE id = ?").get(id) !== undefined;
   }
 
+  private metricValue(name: string): number {
+    const row = this.db.prepare("SELECT value FROM metrics WHERE name = ?").get(name) as Row | undefined;
+    return row === undefined ? 0 : numberField(row, "value");
+  }
+
   private searchFts(query: string, minConfidence: number, limit: number): Row[] {
     try {
       return this.db
@@ -668,6 +708,10 @@ function normalizeTags(tags: string[]): string[] {
 
 function clampConfidence(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function nonNegativeInteger(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
 function boundedLimit(value: number | undefined): number {

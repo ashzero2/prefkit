@@ -134,6 +134,9 @@ function applyEnv(config: PrefKitConfig, env: NodeJS.ProcessEnv): PrefKitConfig 
       next.privacy.redactSecrets,
     );
   }
+  if (env.PREFKIT_METRICS_ENABLED) {
+    next.metrics.enabled = parseBoolean(env.PREFKIT_METRICS_ENABLED, next.metrics.enabled);
+  }
   if (env.PREFKIT_API_BASE_URL) {
     next.apiModel.baseUrl = env.PREFKIT_API_BASE_URL;
   }
@@ -169,6 +172,10 @@ function mergeConfig(base: PrefKitConfig, patch: JsonObject): PrefKitConfig {
     injection: {
       ...base.injection,
       ...objectPatch(patch.injection),
+    },
+    metrics: {
+      ...base.metrics,
+      ...objectPatch(patch.metrics),
     },
   };
 }

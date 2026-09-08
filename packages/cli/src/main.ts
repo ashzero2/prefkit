@@ -375,6 +375,13 @@ async function main(argv: string[]): Promise<number> {
           injection: loadResult.config.injection,
           includeWhy: args.flags.has("why"),
         });
+        if (loadResult.config.metrics.enabled) {
+          store.recordContext({
+            matchedRules: results.length,
+            injectedRules: rendered.included.length,
+            tokenEstimate: rendered.tokenEstimate,
+          });
+        }
         process.stdout.write(rendered.text);
         return 0;
       }
@@ -928,6 +935,12 @@ function printStats(stats: ReturnType<ReturnType<typeof createPreferenceStore>["
   for (const [polarity, count] of Object.entries(stats.evidence.byPolarity)) {
     console.log(`evidence.polarity.${polarity}=${count}`);
   }
+  console.log(`metrics.contextRequests=${stats.metrics.contextRequests}`);
+  console.log(`metrics.contextMatches=${stats.metrics.contextMatches}`);
+  console.log(`metrics.contextHits=${stats.metrics.contextHits}`);
+  console.log(`metrics.contextHitRate=${stats.metrics.contextHitRate.toFixed(4)}`);
+  console.log(`metrics.contextInjectedRules=${stats.metrics.contextInjectedRules}`);
+  console.log(`metrics.contextInjectedTokens=${stats.metrics.contextInjectedTokens}`);
 }
 
 function printMutation(label: string, preference: PreferenceRecord | null): number {

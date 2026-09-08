@@ -46,10 +46,18 @@ export function injectOpenCodePreferenceContext(input: OpenCodePreferenceContext
       searchOptions.sessionId = input.event.sessionID;
     }
 
-    const rendered = renderPreferenceContext(store.search(searchOptions), {
+    const results = store.search(searchOptions);
+    const rendered = renderPreferenceContext(results, {
       injection: loadResult.config.injection,
       includeWhy: options.includeWhy ?? loadResult.config.injection.includeWhy,
     });
+    if (loadResult.config.metrics?.enabled === true) {
+      store.recordContext({
+        matchedRules: results.length,
+        injectedRules: rendered.included.length,
+        tokenEstimate: rendered.tokenEstimate,
+      });
+    }
     appendSystemContext(input.event, rendered.text);
   } finally {
     store.close();

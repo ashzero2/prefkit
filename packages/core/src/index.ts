@@ -7,6 +7,7 @@ export type {
   LearningConfig,
   LocalModelConfig,
   LocalModelThinkMode,
+  MetricsConfig,
   PrefKitConfig,
   PrivacyConfig,
   StoreConfig,
@@ -95,6 +96,7 @@ export type {
   PreferenceWithEvidence,
   ImportReport,
   PreferenceStats,
+  ContextMetricInput,
   RememberPreferenceInput,
   ScopeType,
 } from "./store/types.js";

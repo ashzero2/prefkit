@@ -14,7 +14,7 @@ events → deterministic trigger → local LLM extractor → deterministic confi
 Current state vs. plan:
 
 * **Done (Phases 0–8 hardening slice):** config, SQLite store + evidence/provenance, `remember/list/why/pin/forget/review/export/import/backup/stats`, FTS retrieval + scope + token budget, Ollama local extractor + prefilter + redaction + confidence, queue + `worker` + `replay` with bounded retries, OpenCode/Claude Code/Codex adapters, and the MCP server. The current verification baseline is 23 test files and 138 passing tests.
-* **Remaining:** impact-level instrumentation and fixture-based evaluation. The schema does not yet record retrieval impressions, injected token spend, or whether a later correction was prevented, so those metrics should be designed explicitly before being reported.
+* **Remaining:** impact-level instrumentation for whether a later correction was prevented, plus fixture-based evaluation. Local retrieval impressions, hit rate, and estimated injected token spend are now opt-in counters; correction linkage still needs explicit event semantics before it is reported.
 * **Correctly deferred:** no vector DB, no daemon, no sync/UI, no diff-learning, no per-model overrides.
 
 The core thesis — *"LLM proposes, code disposes"* — is the strongest part of the plan. The model never sets confidence, retrieval/hot hooks never call a model, and model-proposed `active` is normalized back to `candidate`.
@@ -72,7 +72,7 @@ References consulted:
 ## 4. Recommended next moves
 
 1. **Don't add vectors yet.** Keep the Codex adapter (hooks + tiny `AGENTS.md` fallback) and MCP (`context/remember/search/why/forget/pin`) stable — they now complete the "same memory in Claude/Codex/OpenCode" promise.
-2. **Add impact instrumentation:** extend `prefkit stats` with opt-in local counters for retrieval impressions/hits, injected token estimates, and later corrections linked to prior context. Needed to answer "does this work?" without vibes.
+2. **Add correction linkage:** extend the local metrics with an explicit, privacy-safe relationship between a later correction and the prior injected context. Needed to answer "does this work?" without vibes.
 3. **Add a fixture-driven evaluation:** measure extraction decisions, scope normalization, contradiction handling, and redaction misses without sending data off-machine.
 4. **Harden the learning gate:** keep `diffLearning.enabled=false` for V1 (diff intent is ambiguous), and require 2+ evidences or explicit pin for `global/active`.
 5. **Docs positioning line:** *"Not session memory. Preference memory."* — SQLite you can read, scopes you can audit, rules you can `why/pin/forget`. That separates PrefKit from Mem0/Zep (cloud graph), Basic Memory (notes), claude-mem/agentmemory (episodic capture).

@@ -60,6 +60,20 @@ export interface PreferenceStats {
     bySourceType: Record<EvidenceSourceType, number>;
     byPolarity: Record<EvidencePolarity, number>;
   };
+  metrics: {
+    contextRequests: number;
+    contextMatches: number;
+    contextHits: number;
+    contextInjectedRules: number;
+    contextInjectedTokens: number;
+    contextHitRate: number;
+  };
+}
+
+export interface ContextMetricInput {
+  matchedRules: number;
+  injectedRules: number;
+  tokenEstimate: number;
 }
 
 export interface RememberPreferenceInput {
@@ -99,6 +113,7 @@ export interface PreferenceStore {
   list(options?: ListPreferencesOptions): PreferenceRecord[];
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
+  recordContext(input: ContextMetricInput): void;
   stats(): PreferenceStats;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;

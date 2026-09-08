@@ -56,6 +56,10 @@ export interface InjectionConfig {
   failOpen: boolean;
 }
 
+export interface MetricsConfig {
+  enabled: boolean;
+}
+
 export interface PrefKitConfig {
   store: StoreConfig;
   learning: LearningConfig;
@@ -63,6 +67,7 @@ export interface PrefKitConfig {
   apiModel: ApiModelConfig;
   privacy: PrivacyConfig;
   injection: InjectionConfig;
+  metrics: MetricsConfig;
 }
 
 export interface ConfigLoadResult {

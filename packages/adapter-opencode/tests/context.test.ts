@@ -80,12 +80,20 @@ describe("OpenCode context adapter", () => {
         config: {
           ...defaultConfig,
           store: { ...defaultConfig.store, path: storePath },
+          metrics: { enabled: true },
         },
       }),
     });
 
     expect(event.system?.join("\n")).toContain("Relevant user preferences:");
     expect(event.system?.join("\n")).toContain("elegant professional names");
+    const metricsStore = createPreferenceStore({ ...defaultConfig.store, path: storePath });
+    try {
+      expect(metricsStore.stats().metrics.contextRequests).toBe(1);
+      expect(metricsStore.stats().metrics.contextHits).toBe(1);
+    } finally {
+      metricsStore.close();
+    }
   });
 
   it("does not inject when disabled", () => {

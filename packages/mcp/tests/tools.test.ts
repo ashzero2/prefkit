@@ -48,6 +48,21 @@ describe("MCP preference tools", () => {
     }
   });
 
+  it("records opt-in recall metrics without storing the task text", () => {
+    const store = freshStore();
+    try {
+      seed(store);
+      const result = recallPreferences(store, injection, { task: "set up a JavaScript project" }, true);
+
+      expect(result.isError).toBeUndefined();
+      expect(store.stats().metrics.contextRequests).toBe(1);
+      expect(store.stats().metrics.contextHits).toBe(1);
+      expect(store.stats().metrics.contextInjectedTokens).toBeGreaterThan(0);
+    } finally {
+      store.close();
+    }
+  });
+
   it("dedupes repeat remembers to the same id", () => {
     const store = freshStore();
     try {

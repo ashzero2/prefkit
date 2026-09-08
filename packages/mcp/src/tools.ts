@@ -63,7 +63,12 @@ interface RuleSummary {
 
 const SCOPES: ScopeType[] = ["global", "repository", "path", "task", "agent"];
 
-export function recallPreferences(store: PreferenceStore, injection: InjectionConfig, args: RecallArgs): ToolResult {
+export function recallPreferences(
+  store: PreferenceStore,
+  injection: InjectionConfig,
+  args: RecallArgs,
+  metricsEnabled = false,
+): ToolResult {
   const task = args.task.trim();
   if (task.length === 0) {
     return toolError("recall requires a non-empty task. Describe what you are about to do.");
@@ -81,6 +86,13 @@ export function recallPreferences(store: PreferenceStore, injection: InjectionCo
     injection: { ...injection, maxRules: limit },
     includeWhy: args.includeWhy ?? injection.includeWhy,
   });
+  if (metricsEnabled) {
+    store.recordContext({
+      matchedRules: results.length,
+      injectedRules: rendered.included.length,
+      tokenEstimate: rendered.tokenEstimate,
+    });
+  }
   const rules = rendered.included.map(
     (result): RuleSummary => ({
       id: result.preference.id,
