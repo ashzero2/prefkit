@@ -39,6 +39,9 @@ importers:
       '@prefkit/core':
         specifier: workspace:^
         version: link:../core
+      '@prefkit/mcp':
+        specifier: workspace:*
+        version: link:../mcp
 
   packages/core:
     dependencies:

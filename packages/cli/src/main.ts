@@ -34,6 +34,7 @@ import {
   type CodexDoctorReport,
   type CodexInstallReport,
 } from "./codex.js";
+import { runStdioServer } from "@prefkit/mcp";
 import { archiveReplayFile, queueFiles } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
 
@@ -197,6 +198,11 @@ async function main(argv: string[]): Promise<number> {
 
   if (args.command === "codex") {
     return runCodexCommand(args, loadResult);
+  }
+
+  if (args.command === "mcp") {
+    await runStdioServer(args.configPath === undefined ? {} : { configPath: args.configPath });
+    return 0;
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -864,6 +870,8 @@ Usage:
   prefkit opencode doctor [--opencode-config opencode.jsonc]
   prefkit codex install [--write] [--codex-hooks ~/.codex/hooks.json]
   prefkit codex doctor [--codex-hooks ~/.codex/hooks.json]
+  prefkit mcp [--config .prefkit.json]
+    Serve MCP preference tools over stdio.
 `);
 }
 
