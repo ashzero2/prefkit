@@ -90,6 +90,34 @@ describe("SqlitePreferenceStore", () => {
     }
   });
 
+  it("rejects a proposed supersession without changing the predecessor", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const existing = store.remember({ statement: "Use pnpm in this repository." });
+      const candidate = store.remember({
+        statement: "Use npm in this repository.",
+        status: "candidate",
+        supersedesId: existing.preference.id,
+        evidence: { summary: "A conflicting package manager suggestion needs review." },
+      });
+
+      expect(store.review(candidate.preference.id, "reject")?.status).toBe("rejected");
+      expect(store.get(existing.preference.id)?.preference.status).toBe("active");
+      expect(store.get(candidate.preference.id)?.preference.supersedesId).toBe(existing.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("returns null when reviewing an unknown preference", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      expect(store.review("pref_missing", "accept")).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
   it("exports inspectable markdown", () => {
     const store = createPreferenceStore(testStoreConfig());
     try {
