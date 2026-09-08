@@ -105,6 +105,43 @@ describe("retrieval and context rendering", () => {
     }
   });
 
+  it("keeps warm retrieval and rendering under the context latency budget", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      for (let index = 0; index < 250; index += 1) {
+        store.remember({
+          statement: `For repository task ${index}, prefer concise implementation notes and focused tests.`,
+          category: "workflow",
+          tags: ["testing", "implementation"],
+        });
+      }
+
+      const searchOptions = { prompt: "Help me plan focused implementation tests.", limit: 8, minConfidence: 0.45 };
+      const renderOptions = {
+        injection: {
+          maxRules: 8,
+          maxTokens: 700,
+          includeWhy: false,
+          minConfidence: 0.45,
+          failOpen: true,
+        },
+      };
+
+      store.search(searchOptions);
+      const durations = Array.from({ length: 20 }, () => {
+        const startedAt = performance.now();
+        const results = store.search(searchOptions);
+        const rendered = renderPreferenceContext(results, renderOptions);
+        expect(rendered.tokenEstimate).toBeLessThanOrEqual(700);
+        return performance.now() - startedAt;
+      }).sort((left, right) => left - right);
+
+      expect(durations[Math.floor(durations.length * 0.95)]).toBeLessThan(200);
+    } finally {
+      store.close();
+    }
+  });
+
   it("matches repository scopes through symlinks and normalizes boundaries", () => {
     const store = createPreferenceStore(testStoreConfig());
     const root = mkdtempSync(join(tmpdir(), "prefkit-path-scope-"));
