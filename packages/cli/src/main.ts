@@ -27,6 +27,13 @@ import {
   type OpenCodeDoctorReport,
   type OpenCodeInstallReport,
 } from "./opencode.js";
+import {
+  codexAgentsMdSnippet,
+  installCodexAdapter,
+  runCodexDoctor,
+  type CodexDoctorReport,
+  type CodexInstallReport,
+} from "./codex.js";
 import { archiveReplayFile, queueFiles } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
 
@@ -186,6 +193,10 @@ async function main(argv: string[]): Promise<number> {
 
   if (args.command === "opencode") {
     return runOpenCodeCommand(args, loadResult);
+  }
+
+  if (args.command === "codex") {
+    return runCodexCommand(args, loadResult);
   }
 
   const store = createPreferenceStore(loadResult.config.store);
@@ -732,6 +743,57 @@ function printOpenCodeDoctor(report: OpenCodeDoctorReport): void {
   }
 }
 
+function runCodexCommand(args: ParsedArgs, loadResult: ReturnType<typeof loadConfig>): number {
+  const subcommand = args.positionals[0];
+  if (subcommand === "install") {
+    const codexHooksPath = flagOne(args, "codex-hooks");
+    const report = installCodexAdapter({
+      cwd: flagOne(args, "cwd") ?? process.cwd(),
+      ...(codexHooksPath === undefined ? {} : { codexHooksPath }),
+      write: args.flags.has("write"),
+    });
+    printCodexInstall(report);
+    return report.ok ? 0 : 1;
+  }
+
+  if (subcommand !== "doctor") {
+    console.error(`Unknown Codex command: ${subcommand ?? ""}`);
+    console.error("Usage: prefkit codex <doctor|install>");
+    return 1;
+  }
+
+  const codexHooksPath = flagOne(args, "codex-hooks");
+  const report = runCodexDoctor(loadResult, {
+    cwd: flagOne(args, "cwd") ?? process.cwd(),
+    ...(codexHooksPath === undefined ? {} : { codexHooksPath }),
+  });
+  printCodexDoctor(report);
+  return report.ok ? 0 : 1;
+}
+
+function printCodexInstall(report: CodexInstallReport): void {
+  console.log(`PrefKit Codex install: ${report.ok ? "ok" : "needs attention"}`);
+  console.log(report.message);
+  for (const check of report.checks) {
+    console.log(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.message}`);
+  }
+  if (!report.wrote) {
+    console.log("");
+    console.log(report.snippet);
+    console.log("");
+    console.log("Static AGENTS.md fallback (optional, manual):");
+    console.log("");
+    console.log(codexAgentsMdSnippet());
+  }
+}
+
+function printCodexDoctor(report: CodexDoctorReport): void {
+  console.log(`PrefKit Codex doctor: ${report.ok ? "ok" : "needs attention"}`);
+  for (const check of report.checks) {
+    console.log(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.message}`);
+  }
+}
+
 function printDoctor(report: Awaited<ReturnType<typeof runDoctor>>): void {
   console.log(`PrefKit doctor: ${report.ok ? "ok" : "needs attention"}`);
   for (const check of report.checks) {
@@ -800,6 +862,8 @@ Usage:
   prefkit doctor [--config .prefkit.json]
   prefkit opencode install [--write] [--opencode-config opencode.jsonc]
   prefkit opencode doctor [--opencode-config opencode.jsonc]
+  prefkit codex install [--write] [--codex-hooks ~/.codex/hooks.json]
+  prefkit codex doctor [--codex-hooks ~/.codex/hooks.json]
 `);
 }
 
