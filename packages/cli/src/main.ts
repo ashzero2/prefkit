@@ -34,7 +34,7 @@ import {
   type CodexInstallReport,
 } from "./codex.js";
 import { runStdioServer } from "@prefkit/mcp";
-import { archiveReplayFile, queueFiles, writeQueueFile } from "./replay.js";
+import { archiveReplayFile, queueFiles, recordQueueFailure, writeQueueFile } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
 
 interface ParsedArgs {
@@ -51,6 +51,7 @@ interface ReplayInput {
   persist: boolean;
   store: PreferenceStore | null;
   config: ReturnType<typeof loadConfig>["config"];
+  maxAttempts: number;
 }
 
 interface ReplayFileResult {
@@ -58,6 +59,8 @@ interface ReplayFileResult {
   status: string;
   persisted: boolean;
   processed: boolean;
+  retryDisposition?: "retrying" | "dead-lettered";
+  retryAttempts?: number;
   preferenceId?: string;
   error?: string;
 }
@@ -125,6 +128,10 @@ async function main(argv: string[]): Promise<number> {
         persist,
         store,
         config: loadResult.config,
+        maxAttempts: parsePositiveIntegerFlag(
+          flagOne(args, "max-attempts"),
+          loadResult.config.learning.queueMaxAttempts,
+        ),
       });
       printReplayReport(report);
       return report.failed === 0 ? 0 : 1;
@@ -167,6 +174,7 @@ async function main(argv: string[]): Promise<number> {
             persist: true,
             store,
             config: loadResult.config,
+            maxAttempts: loadResult.config.learning.queueMaxAttempts,
           });
           if (args.flags.has("once") || report.total > 0) {
             printReplayReport(report);
@@ -484,9 +492,16 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
 
       const processable =
         result.ok || result.status === "learning_skipped" || result.status === "input_too_large";
-      const processed = input.persist && processable;
+      let processed = input.persist && processable;
+      let retryDisposition: "retrying" | "dead-lettered" | undefined;
+      let retryAttempts: number | undefined;
       if (processed) {
         archiveReplayFile(file, input.queueDir);
+      } else if (input.persist && !processable) {
+        const retry = recordQueueFailure(file, input.queueDir, input.maxAttempts, result.status === "invalid_event");
+        retryDisposition = retry.disposition;
+        retryAttempts = retry.attempts;
+        processed = retry.disposition === "dead-lettered";
       }
 
       report.files.push({
@@ -494,17 +509,35 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
         status: result.status,
         persisted: persisted !== null,
         processed,
+        ...(retryDisposition === undefined || retryAttempts === undefined ? {} : { retryDisposition, retryAttempts }),
         ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
         ...(result.ok || result.errors.length === 0 ? {} : { error: result.errors[0] }),
       });
     } catch (error) {
       report.failed += 1;
+      let processed = false;
+      let retryDisposition: "retrying" | "dead-lettered" | undefined;
+      let retryAttempts: number | undefined;
+      let recoveryError: string | undefined;
+      if (input.persist) {
+        try {
+          const retry = recordQueueFailure(file, input.queueDir, input.maxAttempts);
+          retryDisposition = retry.disposition;
+          retryAttempts = retry.attempts;
+          processed = retry.disposition === "dead-lettered";
+        } catch (recoveryFailure) {
+          recoveryError = `Queue retry handling failed: ${
+            recoveryFailure instanceof Error ? recoveryFailure.message : String(recoveryFailure)
+          }`;
+        }
+      }
       report.files.push({
         file,
         status: "failed",
         persisted: false,
-        processed: false,
-        error: error instanceof Error ? error.message : String(error),
+        processed,
+        ...(retryDisposition === undefined || retryAttempts === undefined ? {} : { retryDisposition, retryAttempts }),
+        error: [error instanceof Error ? error.message : String(error), recoveryError].filter(Boolean).join("; "),
       });
     }
   }
@@ -687,8 +720,9 @@ function printReplayReport(report: ReplayReport): void {
   );
   for (const file of report.files) {
     const persisted = file.preferenceId === undefined ? String(file.persisted) : `${file.persisted}:${file.preferenceId}`;
+    const retry = file.retryDisposition === undefined ? "" : ` retry=${file.retryDisposition}:${file.retryAttempts}`;
     const error = file.error === undefined ? "" : ` error=${file.error}`;
-    console.log(`- ${file.file} status=${file.status} persisted=${persisted} processed=${file.processed}${error}`);
+    console.log(`- ${file.file} status=${file.status} persisted=${persisted} processed=${file.processed}${retry}${error}`);
   }
 }
 
@@ -859,8 +893,8 @@ Usage:
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]
   prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]
-  prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
-    Successful and skipped persisted events move to queue/processed; failures remain for retry.
+  prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100] [--max-attempts 3]
+    Successful and skipped events move to queue/processed; exhausted failures move to queue/failed.
   prefkit worker [--queue-dir ~/.prefkit/queue] [--interval-ms 5000] [--batch-size 1] [--once]
     Watches the queue and persists learning events in the background. One worker runs per queue.
   prefkit doctor [--config .prefkit.json]

@@ -122,6 +122,12 @@ function applyEnv(config: PrefKitConfig, env: NodeJS.ProcessEnv): PrefKitConfig 
   if (env.PREFKIT_WORKER_BATCH_SIZE) {
     next.learning.workerBatchSize = parsePositiveInteger(env.PREFKIT_WORKER_BATCH_SIZE, next.learning.workerBatchSize);
   }
+  if (env.PREFKIT_QUEUE_MAX_ATTEMPTS) {
+    next.learning.queueMaxAttempts = parsePositiveInteger(
+      env.PREFKIT_QUEUE_MAX_ATTEMPTS,
+      next.learning.queueMaxAttempts,
+    );
+  }
   if (env.PREFKIT_REDACT_SECRETS) {
     next.privacy.redactSecrets = parseBoolean(
       env.PREFKIT_REDACT_SECRETS,

@@ -13,6 +13,7 @@ describe("config loading", () => {
     expect(result.warnings).toEqual([]);
     expect(result.config.localModel.provider).toBe("ollama");
     expect(result.config.injection.maxTokens).toBe(700);
+    expect(result.config.learning.queueMaxAttempts).toBe(3);
   });
 
   it("merges project config and environment overrides", () => {
@@ -31,6 +32,7 @@ describe("config loading", () => {
         PREFKIT_OLLAMA_MODEL: "qwen3:4b",
         PREFKIT_MODEL_TIMEOUT_MS: "1000",
         PREFKIT_MODEL_THINK: "low",
+        PREFKIT_QUEUE_MAX_ATTEMPTS: "5",
       },
     });
 
@@ -39,6 +41,7 @@ describe("config loading", () => {
     expect(result.config.localModel.model).toBe("qwen3:4b");
     expect(result.config.localModel.timeoutMs).toBe(1000);
     expect(result.config.localModel.think).toBe("low");
+    expect(result.config.learning.queueMaxAttempts).toBe(5);
   });
 
   it("expands home directory paths", () => {

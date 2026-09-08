@@ -19,6 +19,7 @@ export interface LearningConfig {
   queuePath: string;
   workerPollMs: number;
   workerBatchSize: number;
+  queueMaxAttempts: number;
 }
 
 export interface LocalModelConfig {

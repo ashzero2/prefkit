@@ -127,6 +127,7 @@ PREFKIT_MODEL_TEMPERATURE=0
 PREFKIT_MODEL_TIMEOUT_MS=20000
 PREFKIT_WORKER_POLL_MS=5000
 PREFKIT_WORKER_BATCH_SIZE=1
+PREFKIT_QUEUE_MAX_ATTEMPTS=3
 PREFKIT_REDACT_SECRETS=true
 ```
 
@@ -254,7 +255,7 @@ pnpm prefkit replay --queue-dir examples/events --limit 10
 pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
 ```
 
-With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Model errors and invalid events stay in the queue for retry or inspection. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
+With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Retryable model or storage failures stay in the queue with an attempt count; after the configured limit they move to `<queue-dir>/failed` for inspection. Malformed event files are dead-lettered immediately. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
 
 During normal adapter use, the worker starts automatically after the first strong learning event. Run it manually when recovering a queue or using an adapter that does not provide auto-start:
 

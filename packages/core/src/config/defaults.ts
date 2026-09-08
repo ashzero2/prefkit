@@ -15,6 +15,7 @@ export const defaultConfig: PrefKitConfig = {
     queuePath: "~/.prefkit/queue",
     workerPollMs: 5000,
     workerBatchSize: 1,
+    queueMaxAttempts: 3,
   },
   localModel: {
     provider: "ollama",
