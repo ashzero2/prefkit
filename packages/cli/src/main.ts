@@ -21,6 +21,7 @@ import {
   type PreferenceStore,
   type RememberPreferenceInput,
   type ScopeType,
+  type StoreConfig,
 } from "@prefkit/core";
 import {
   installOpenCodeAdapter,
@@ -104,6 +105,9 @@ async function main(argv: string[]): Promise<number> {
       privacy: loadResult.config.privacy,
       localModel: loadResult.config.localModel,
     });
+    if (result.event?.eventType === "explicit_correction") {
+      recordCorrectionMetric(loadResult.config.metrics.enabled, loadResult.config.store, result.event.sessionId);
+    }
     const persist = args.flags.has("persist");
     const store = persist ? createPreferenceStore(loadResult.config.store) : null;
     try {
@@ -380,6 +384,8 @@ async function main(argv: string[]): Promise<number> {
             matchedRules: results.length,
             injectedRules: rendered.included.length,
             tokenEstimate: rendered.tokenEstimate,
+            injectedPreferenceIds: rendered.included.map((result) => result.preference.id),
+            ...(searchSession === undefined ? {} : { sessionId: searchSession }),
           });
         }
         process.stdout.write(rendered.text);
@@ -620,6 +626,9 @@ async function queueEventFromStdin(
   }
 
   const redacted = redactLearnerEvent(validation.value, loadResult.config.privacy);
+  if (redacted.event.eventType === "explicit_correction") {
+    recordCorrectionMetric(loadResult.config.metrics.enabled, loadResult.config.store, redacted.event.sessionId);
+  }
   const signal = scoreLearnerEvent(redacted.event, {
     enabled: loadResult.config.learning.enabled,
     mode: loadResult.config.learning.mode,
@@ -647,6 +656,19 @@ async function readStdin(): Promise<string> {
 
 function eventFileName(date: Date, id: string): string {
   return `${date.toISOString().replace(/[:.]/g, "-")}-${id}.json`;
+}
+
+function recordCorrectionMetric(metricsEnabled: boolean, storeConfig: StoreConfig, sessionId: string | undefined): void {
+  if (!metricsEnabled) {
+    return;
+  }
+
+  const metricStore = createPreferenceStore(storeConfig);
+  try {
+    metricStore.recordCorrection(sessionId === undefined ? {} : { sessionId });
+  } finally {
+    metricStore.close();
+  }
 }
 
 function learnExitCode(result: PreferenceExtractionResult): number {
@@ -941,6 +963,8 @@ function printStats(stats: ReturnType<ReturnType<typeof createPreferenceStore>["
   console.log(`metrics.contextHitRate=${stats.metrics.contextHitRate.toFixed(4)}`);
   console.log(`metrics.contextInjectedRules=${stats.metrics.contextInjectedRules}`);
   console.log(`metrics.contextInjectedTokens=${stats.metrics.contextInjectedTokens}`);
+  console.log(`metrics.correctionsAfterContext=${stats.metrics.correctionsAfterContext}`);
+  console.log(`metrics.correctionsWithoutContext=${stats.metrics.correctionsWithoutContext}`);
 }
 
 function printMutation(label: string, preference: PreferenceRecord | null): number {

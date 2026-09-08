@@ -100,4 +100,17 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: "local-context-exposure-links",
+    sql: `
+      CREATE TABLE IF NOT EXISTS context_exposures (
+        session_hash TEXT PRIMARY KEY,
+        preference_ids_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_context_exposures_created ON context_exposures(created_at DESC);
+    `,
+  },
 ];

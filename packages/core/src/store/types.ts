@@ -67,6 +67,8 @@ export interface PreferenceStats {
     contextInjectedRules: number;
     contextInjectedTokens: number;
     contextHitRate: number;
+    correctionsAfterContext: number;
+    correctionsWithoutContext: number;
   };
 }
 
@@ -74,6 +76,12 @@ export interface ContextMetricInput {
   matchedRules: number;
   injectedRules: number;
   tokenEstimate: number;
+  sessionId?: string | null;
+  injectedPreferenceIds?: string[];
+}
+
+export interface CorrectionMetricInput {
+  sessionId?: string | null;
 }
 
 export interface RememberPreferenceInput {
@@ -114,6 +122,7 @@ export interface PreferenceStore {
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
   recordContext(input: ContextMetricInput): void;
+  recordCorrection(input: CorrectionMetricInput): boolean;
   stats(): PreferenceStats;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;

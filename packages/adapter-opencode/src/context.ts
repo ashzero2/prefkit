@@ -56,6 +56,8 @@ export function injectOpenCodePreferenceContext(input: OpenCodePreferenceContext
         matchedRules: results.length,
         injectedRules: rendered.included.length,
         tokenEstimate: rendered.tokenEstimate,
+        injectedPreferenceIds: rendered.included.map((result) => result.preference.id),
+        ...(input.event.sessionID === undefined ? {} : { sessionId: input.event.sessionID }),
       });
     }
     appendSystemContext(input.event, rendered.text);

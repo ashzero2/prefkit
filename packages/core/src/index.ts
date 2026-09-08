@@ -97,6 +97,7 @@ export type {
   ImportReport,
   PreferenceStats,
   ContextMetricInput,
+  CorrectionMetricInput,
   RememberPreferenceInput,
   ScopeType,
 } from "./store/types.js";

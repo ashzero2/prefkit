@@ -166,6 +166,8 @@ describe("SqlitePreferenceStore", () => {
           contextInjectedRules: 0,
           contextInjectedTokens: 0,
           contextHitRate: 0,
+          correctionsAfterContext: 0,
+          correctionsWithoutContext: 0,
         },
       });
     } finally {
@@ -187,7 +189,30 @@ describe("SqlitePreferenceStore", () => {
         contextInjectedRules: 3,
         contextInjectedTokens: 62,
         contextHitRate: 2 / 3,
+        correctionsAfterContext: 0,
+        correctionsWithoutContext: 0,
       });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("links one explicit correction to the latest injected context for its session", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.recordContext({
+        matchedRules: 1,
+        injectedRules: 1,
+        tokenEstimate: 12,
+        sessionId: "session-a",
+        injectedPreferenceIds: ["pref_example"],
+      });
+
+      expect(store.recordCorrection({ sessionId: "session-a" })).toBe(true);
+      expect(store.recordCorrection({ sessionId: "session-a" })).toBe(false);
+      expect(store.recordCorrection({ sessionId: "session-b" })).toBe(false);
+      expect(store.stats().metrics.correctionsAfterContext).toBe(1);
+      expect(store.stats().metrics.correctionsWithoutContext).toBe(2);
     } finally {
       store.close();
     }

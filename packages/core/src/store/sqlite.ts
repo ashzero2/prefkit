@@ -12,6 +12,7 @@ import type {
   EvidenceRecord,
   EvidenceSourceType,
   ContextMetricInput,
+  CorrectionMetricInput,
   ListPreferencesOptions,
   PreferenceRecord,
   PreferenceReviewDecision,
@@ -31,6 +32,7 @@ const activeStatuses = new Set<PreferenceStatus>(["candidate", "active", "pinned
 const preferenceStatuses = ["candidate", "active", "pinned", "suppressed", "superseded", "rejected"] as const;
 const evidenceSourceTypes = ["USER_EXPLICIT", "MODEL_EXTRACTED", "AGENT_EVENT", "IMPORT"] as const;
 const evidencePolarities = ["positive", "negative", "neutral"] as const;
+const maxContextExposures = 1000;
 
 export class SqlitePreferenceStore implements PreferenceStore {
   private readonly db: DatabaseHandle;
@@ -234,6 +236,8 @@ export class SqlitePreferenceStore implements PreferenceStore {
     const contextHits = this.metricValue("context_hits");
     const contextInjectedRules = this.metricValue("context_injected_rules");
     const contextInjectedTokens = this.metricValue("context_injected_tokens");
+    const correctionsAfterContext = this.metricValue("corrections_after_context");
+    const correctionsWithoutContext = this.metricValue("corrections_without_context");
 
     return {
       preferences: {
@@ -252,6 +256,8 @@ export class SqlitePreferenceStore implements PreferenceStore {
         contextInjectedRules,
         contextInjectedTokens,
         contextHitRate: contextRequests === 0 ? 0 : contextHits / contextRequests,
+        correctionsAfterContext,
+        correctionsWithoutContext,
       },
     };
   }
@@ -262,6 +268,8 @@ export class SqlitePreferenceStore implements PreferenceStore {
     const matchedRules = nonNegativeInteger(input.matchedRules);
     const injectedRules = nonNegativeInteger(input.injectedRules);
     const tokenEstimate = nonNegativeInteger(input.tokenEstimate);
+    const sessionHash = hashSessionId(input.sessionId);
+    const preferenceIds = normalizePreferenceIds(input.injectedPreferenceIds);
     const increment = this.db.prepare(
       `INSERT INTO metrics (name, value) VALUES (?, ?)
        ON CONFLICT(name) DO UPDATE SET value = metrics.value + excluded.value`,
@@ -272,8 +280,46 @@ export class SqlitePreferenceStore implements PreferenceStore {
       increment.run("context_hits", injectedRules > 0 ? 1 : 0);
       increment.run("context_injected_rules", injectedRules);
       increment.run("context_injected_tokens", tokenEstimate);
+      if (sessionHash !== null && preferenceIds.length > 0) {
+        this.db
+          .prepare(
+            `INSERT INTO context_exposures (session_hash, preference_ids_json, created_at) VALUES (?, ?, ?)
+             ON CONFLICT(session_hash) DO UPDATE SET preference_ids_json = excluded.preference_ids_json,
+                                                     created_at = excluded.created_at`,
+          )
+          .run(sessionHash, JSON.stringify(preferenceIds), new Date().toISOString());
+        this.db
+          .prepare(
+            `DELETE FROM context_exposures
+             WHERE rowid NOT IN (
+               SELECT rowid FROM context_exposures ORDER BY created_at DESC LIMIT ?
+             )`,
+          )
+          .run(maxContextExposures);
+      }
     });
     record();
+  }
+
+  recordCorrection(input: CorrectionMetricInput): boolean {
+    this.init();
+
+    const sessionHash = hashSessionId(input.sessionId);
+    const increment = this.db.prepare(
+      `INSERT INTO metrics (name, value) VALUES (?, 1)
+       ON CONFLICT(name) DO UPDATE SET value = metrics.value + 1`,
+    );
+    const record = this.db.transaction(() => {
+      const linked =
+        sessionHash !== null &&
+        this.db.prepare("SELECT 1 FROM context_exposures WHERE session_hash = ?").get(sessionHash) !== undefined;
+      if (sessionHash !== null && linked) {
+        this.db.prepare("DELETE FROM context_exposures WHERE session_hash = ?").run(sessionHash);
+      }
+      increment.run(linked ? "corrections_after_context" : "corrections_without_context");
+      return linked;
+    });
+    return record();
   }
 
   pin(id: string): PreferenceRecord | null {
@@ -712,6 +758,17 @@ function clampConfidence(value: number): number {
 
 function nonNegativeInteger(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function hashSessionId(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value.trim().length === 0) {
+    return null;
+  }
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizePreferenceIds(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).filter((value) => value.trim().length > 0))].slice(0, 20);
 }
 
 function boundedLimit(value: number | undefined): number {

@@ -91,6 +91,8 @@ export function recallPreferences(
       matchedRules: results.length,
       injectedRules: rendered.included.length,
       tokenEstimate: rendered.tokenEstimate,
+      injectedPreferenceIds: rendered.included.map((result) => result.preference.id),
+      ...(args.session === undefined ? {} : { sessionId: args.session }),
     });
   }
   const rules = rendered.included.map(
