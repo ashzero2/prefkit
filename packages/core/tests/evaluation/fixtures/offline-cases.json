@@ -1,0 +1,95 @@
+[
+  {
+    "name": "redacts nested database credentials",
+    "kind": "redaction",
+    "input": "repoContext.env.DB_PASSWORD=synthetic-db-password-value",
+    "secret": "synthetic-db-password-value",
+    "expectedFinding": "secret-assignment"
+  },
+  {
+    "name": "redacts temporary AWS access key ids",
+    "kind": "redaction",
+    "input": "AWS_ACCESS_KEY_ID=ASIAABCDEFGHIJKLMNOP",
+    "secret": "ASIAABCDEFGHIJKLMNOP",
+    "expectedFinding": "aws-access-key-id"
+  },
+  {
+    "name": "ordinary prompt stays below learning gate",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "Can you add a test for this helper?",
+      "assistantSummary": "Suggested a test.",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": false
+  },
+  {
+    "name": "explicit correction reaches learning gate",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "explicit_correction",
+      "userPrompt": "Use pnpm here instead.",
+      "assistantSummary": "Suggested npm.",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": true
+  },
+  {
+    "name": "contradictory extraction remains reviewable",
+    "kind": "confidence",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "explicit_correction",
+      "userPrompt": "Use npm for this repository instead.",
+      "assistantSummary": "Suggested pnpm.",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "extraction": {
+      "shouldLearn": true,
+      "statement": "Use npm for JavaScript package management.",
+      "scopeType": "repository",
+      "scopeValue": "/repo",
+      "category": "tooling",
+      "tags": ["javascript", "package-manager"],
+      "evidenceType": "USER_EXPLICIT",
+      "polarity": "positive",
+      "proposedStatus": "active",
+      "needsConfirmation": false,
+      "rationale": "The user corrected the package manager.",
+      "contradictions": [
+        {
+          "preferenceId": "pref_existing",
+          "kind": "same_scope",
+          "action": "needs_review",
+          "rationale": "The existing repository preference says to use pnpm."
+        }
+      ]
+    },
+    "expectedStatus": "candidate"
+  },
+  {
+    "name": "task query ranks the relevant preference",
+    "kind": "retrieval",
+    "prompt": "I need to name an app",
+    "limit": 1,
+    "preferences": [
+      {
+        "statement": "For product and app naming, prefer elegant professional names.",
+        "category": "naming",
+        "tags": ["product", "app"]
+      },
+      {
+        "statement": "Prefer pnpm for JavaScript package management.",
+        "category": "tooling",
+        "tags": ["javascript"]
+      }
+    ],
+    "relevantStatements": ["For product and app naming, prefer elegant professional names."]
+  }
+]
