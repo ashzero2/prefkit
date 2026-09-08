@@ -235,7 +235,7 @@ export class SqlitePreferenceStore implements PreferenceStore {
   }
 
   exportMarkdown(): string {
-    const preferences = this.list({ includeInactive: true, limit: 500 });
+    const preferences = this.allPreferences();
     const lines = ["# PrefKit Preferences", "", `Exported: ${new Date().toISOString()}`, ""];
 
     for (const pref of preferences) {
@@ -256,6 +256,14 @@ export class SqlitePreferenceStore implements PreferenceStore {
     }
 
     return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  exportJson(): string {
+    const preferences = this.allPreferences().map((preference) => ({
+      preference,
+      evidence: this.evidenceFor(preference.id),
+    }));
+    return `${JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), preferences }, null, 2)}\n`;
   }
 
   private configure(): void {
@@ -345,6 +353,10 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return (this.db
       .prepare("SELECT * FROM evidence WHERE preference_id = ? ORDER BY created_at DESC")
       .all(preferenceId) as Row[]).map(rowToEvidence);
+  }
+
+  private allPreferences(): PreferenceRecord[] {
+    return (this.db.prepare("SELECT * FROM preferences ORDER BY updated_at DESC").all() as Row[]).map(rowToPreference);
   }
 
   private findByEvidenceHash(hash: string): PreferenceWithEvidence | null {

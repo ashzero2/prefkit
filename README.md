@@ -207,6 +207,12 @@ Export:
 pnpm prefkit export --format markdown
 ```
 
+For lossless transfer, export preferences and evidence as JSON:
+
+```bash
+pnpm prefkit export --format json > prefkit-export.json
+```
+
 Create a SQLite backup without overwriting an existing file:
 
 ```bash

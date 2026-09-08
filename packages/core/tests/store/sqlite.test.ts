@@ -132,6 +132,28 @@ describe("SqlitePreferenceStore", () => {
       source.close();
     }
   });
+
+  it("exports all preferences and evidence as JSON", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const remembered = store.remember({
+        statement: "Prefer JSON transfer exports.",
+        evidence: { summary: "User requested a lossless export." },
+      });
+
+      const exported = JSON.parse(store.exportJson()) as {
+        version: number;
+        preferences: Array<{ preference: { id: string }; evidence: Array<{ summary: string }> }>;
+      };
+
+      expect(exported.version).toBe(1);
+      expect(exported.preferences).toHaveLength(1);
+      expect(exported.preferences[0]?.preference.id).toBe(remembered.preference.id);
+      expect(exported.preferences[0]?.evidence[0]?.summary).toBe("User requested a lossless export.");
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

@@ -319,8 +319,12 @@ async function main(argv: string[]): Promise<number> {
       }
       case "export": {
         const format = flagOne(args, "format") ?? "markdown";
+        if (format === "json") {
+          process.stdout.write(store.exportJson());
+          return 0;
+        }
         if (format !== "markdown") {
-          throw new Error("Only markdown export is supported in Phase 1.");
+          throw new Error("Supported export formats are markdown and json.");
         }
         process.stdout.write(store.exportMarkdown());
         return 0;
@@ -914,7 +918,7 @@ Usage:
   prefkit pin <id>
   prefkit forget <id>
   prefkit review <id> --accept|--reject
-  prefkit export --format markdown
+  prefkit export --format markdown|json
   prefkit backup --output ./backups/prefs.db
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]

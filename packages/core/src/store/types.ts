@@ -84,4 +84,5 @@ export interface PreferenceStore {
   forget(id: string): PreferenceRecord | null;
   review(id: string, decision: PreferenceReviewDecision): PreferenceRecord | null;
   exportMarkdown(): string;
+  exportJson(): string;
 }
