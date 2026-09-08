@@ -388,4 +388,4 @@ Completed:
 
 Next:
 
-- Hardening: warm-context latency budget, queue retry behavior, secret-redaction corpus, backup/export/import, conflict review
+- Impact instrumentation and fixture-based evaluation: opt-in local counters for retrieval hits, prevented corrections, and injection token spend
