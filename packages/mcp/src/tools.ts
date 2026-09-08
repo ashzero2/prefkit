@@ -20,33 +20,33 @@ export interface ToolResult {
 
 export interface RecallArgs {
   task: string;
-  cwd?: string;
-  agent?: string;
-  session?: string;
-  limit?: number;
-  includeWhy?: boolean;
+  cwd?: string | undefined;
+  agent?: string | undefined;
+  session?: string | undefined;
+  limit?: number | undefined;
+  includeWhy?: boolean | undefined;
 }
 
 export interface SearchArgs {
   query: string;
-  limit?: number;
-  offset?: number;
+  limit?: number | undefined;
+  offset?: number | undefined;
 }
 
 export interface ListArgs {
-  scope?: ScopeType;
-  scopeValue?: string;
-  status?: PreferenceStatus;
-  limit?: number;
-  offset?: number;
+  scope?: ScopeType | undefined;
+  scopeValue?: string | undefined;
+  status?: PreferenceStatus | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 }
 
 export interface RememberArgs {
   statement: string;
-  scope?: ScopeType;
-  scopeValue?: string;
-  category?: string;
-  tags?: string[];
+  scope?: ScopeType | undefined;
+  scopeValue?: string | undefined;
+  category?: string | undefined;
+  tags?: string[] | undefined;
 }
 
 export interface IdArgs {
@@ -79,7 +79,7 @@ export function recallPreferences(store: PreferenceStore, injection: InjectionCo
   });
   const rendered = renderPreferenceContext(results, {
     injection: { ...injection, maxRules: limit },
-    includeWhy: args.includeWhy,
+    includeWhy: args.includeWhy ?? injection.includeWhy,
   });
   const rules = rendered.included.map(
     (result): RuleSummary => ({
