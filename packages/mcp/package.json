@@ -1,9 +1,30 @@
 {
   "name": "@prefkit/mcp",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "MCP server for PrefKit preference memory: portable retrieval and explicit memory over stdio.",
   "type": "module",
+  "main": "./dist/server.js",
+  "bin": {
+    "prefkit-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
   "dependencies": {
-    "@prefkit/core": "workspace:*"
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@prefkit/core": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
