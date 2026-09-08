@@ -71,10 +71,10 @@ References consulted:
 
 ## 4. Recommended next moves
 
-1. **Don't add vectors yet.** Ship Codex adapter (hooks + tiny `AGENTS.md` fallback) + MCP (`context/remember/search/why/forget/pin`) first — that completes the "same memory in Claude/Codex/OpenCode" promise.
+1. **Don't add vectors yet.** Keep the Codex adapter (hooks + tiny `AGENTS.md` fallback) and MCP (`context/remember/search/why/forget/pin`) stable — they now complete the "same memory in Claude/Codex/OpenCode" promise.
 2. **Add impact instrumentation:** extend `prefkit stats` with opt-in local counters for retrieval impressions/hits, injected token estimates, and later corrections linked to prior context. Needed to answer "does this work?" without vibes.
 3. **Add a fixture-driven evaluation:** measure extraction decisions, scope normalization, contradiction handling, and redaction misses without sending data off-machine.
 4. **Harden the learning gate:** keep `diffLearning.enabled=false` for V1 (diff intent is ambiguous), and require 2+ evidences or explicit pin for `global/active`.
-4. **Docs positioning line:** *"Not session memory. Preference memory."* — SQLite you can read, scopes you can audit, rules you can `why/pin/forget`. That separates PrefKit from Mem0/Zep (cloud graph), Basic Memory (notes), claude-mem/agentmemory (episodic capture).
+5. **Docs positioning line:** *"Not session memory. Preference memory."* — SQLite you can read, scopes you can audit, rules you can `why/pin/forget`. That separates PrefKit from Mem0/Zep (cloud graph), Basic Memory (notes), claude-mem/agentmemory (episodic capture).
 
 Bottom line: the plan's bets — FTS5 over vector DB, deterministic confidence over LLM authority, scopes over global dump, fail-open hooks over blocking calls, queue-worker over daemon — are all validated by what failed for others in forums/HN in the last year. The hard part was never storage; it is false generalization + scope + retrieval hygiene, which is exactly where this design spends its complexity. The adapter/MCP last mile and the first hardening pass are complete; the next meaningful step is measuring user-visible impact locally.
