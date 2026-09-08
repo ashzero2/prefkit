@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import {
   createPreferenceStore,
   extractPreference,
@@ -35,7 +34,7 @@ import {
   type CodexInstallReport,
 } from "./codex.js";
 import { runStdioServer } from "@prefkit/mcp";
-import { archiveReplayFile, queueFiles } from "./replay.js";
+import { archiveReplayFile, queueFiles, writeQueueFile } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
 
 interface ParsedArgs {
@@ -546,10 +545,9 @@ async function queueEventFromStdin(
   }
 
   const queueDir = flagOne(args, "queue-dir") ?? loadResult.config.learning.queuePath;
-  mkdirSync(queueDir, { recursive: true });
-  const path = join(queueDir, eventFileName(new Date(), randomUUID()));
-  writeFileSync(path, `${JSON.stringify(redacted.event, null, 2)}\n`, { mode: 0o600 });
-  console.log(`queued=true path=${path} signalScore=${signal.score}`);
+  const fileName = eventFileName(new Date(), randomUUID());
+  const queuedPath = writeQueueFile(queueDir, fileName, `${JSON.stringify(redacted.event, null, 2)}\n`);
+  console.log(`queued=true path=${queuedPath} signalScore=${signal.score}`);
   return 0;
 }
 

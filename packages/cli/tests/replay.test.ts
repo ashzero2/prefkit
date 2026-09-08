@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { archiveReplayFile, queueFiles } from "../src/replay.js";
+import { archiveReplayFile, queueFiles, writeQueueFile } from "../src/replay.js";
 
 describe("replay queue files", () => {
   it("archives a processed file outside the active queue", () => {
@@ -29,5 +29,21 @@ describe("replay queue files", () => {
 
     expect(second).not.toBe(first);
     expect(readdirSync(join(queueDir, "processed"))).toHaveLength(2);
+  });
+
+  it("publishes queue files only after the complete payload is written", () => {
+    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-replay-"));
+
+    const queued = writeQueueFile(queueDir, "event.json", '{"eventType":"explicit_memory"}\n');
+
+    expect(queueFiles(queueDir, 10)).toEqual([queued]);
+    expect(readdirSync(queueDir)).toEqual(["event.json"]);
+  });
+
+  it("rejects queue paths that could escape the queue directory", () => {
+    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-replay-"));
+
+    expect(() => writeQueueFile(queueDir, "../event.json", "{}\n")).toThrow("JSON basename");
+    expect(queueFiles(queueDir, 10)).toEqual([]);
   });
 });

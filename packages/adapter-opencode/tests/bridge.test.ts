@@ -98,7 +98,10 @@ fi
 
 async function waitForFile(path: string): Promise<void> {
   const deadline = Date.now() + 1000;
-  while (!existsSync(path) && Date.now() < deadline) {
+  while (Date.now() < deadline) {
+    if (existsSync(path) && readFileSync(path, "utf8") === "started") {
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }

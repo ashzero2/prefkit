@@ -95,7 +95,10 @@ describe("OpenCode doctor", () => {
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(join(pluginDir, "prefkit.ts"), "export default {}\n");
 
-    const report = runOpenCodeDoctor(loadResult(cwd), { cwd, env: {} });
+    const report = runOpenCodeDoctor(loadResult(cwd), {
+      cwd,
+      env: { OPENCODE_CONFIG_DIR: join(cwd, "global-config") },
+    });
 
     expect(report.ok).toBe(true);
     expect(check(report, "opencode-config")?.ok).toBe(true);
