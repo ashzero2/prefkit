@@ -1,9 +1,17 @@
 {
-  "name": "@prefkit/adapter-codex",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@prefkit/codex",
+  "version": "0.1.0",
+  "description": "Codex plugin for PrefKit preference context injection and background learning.",
   "type": "module",
-  "dependencies": {
-    "@prefkit/core": "workspace:*"
+  "files": [
+    ".codex-plugin",
+    "hooks",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

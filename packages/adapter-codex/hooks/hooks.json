@@ -1,0 +1,33 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${PLUGIN_ROOT}/scripts/prefkit-context.mjs"
+            ],
+            "timeout": 5,
+            "statusMessage": "Loading PrefKit context"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${PLUGIN_ROOT}/scripts/prefkit-learn.mjs"
+            ],
+            "async": true,
+            "timeout": 30,
+            "statusMessage": "Saving PrefKit preference"
+          }
+        ]
+      }
+    ]
+  }
+}
