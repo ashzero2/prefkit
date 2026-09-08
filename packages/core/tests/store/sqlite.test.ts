@@ -154,6 +154,36 @@ describe("SqlitePreferenceStore", () => {
       store.close();
     }
   });
+
+  it("imports JSON preferences and evidence idempotently", () => {
+    const source = createPreferenceStore(testStoreConfig());
+    const target = createPreferenceStore(testStoreConfig());
+
+    try {
+      const remembered = source.remember({
+        statement: "Prefer lossless preference transfers.",
+        evidence: { summary: "User requested a portable backup." },
+      });
+      const exported = source.exportJson();
+
+      expect(target.importJson(exported)).toEqual({
+        preferencesImported: 1,
+        preferencesSkipped: 0,
+        evidenceImported: 1,
+        conflicts: 0,
+      });
+      expect(target.importJson(exported)).toEqual({
+        preferencesImported: 0,
+        preferencesSkipped: 1,
+        evidenceImported: 0,
+        conflicts: 0,
+      });
+      expect(target.get(remembered.preference.id)?.evidence[0]?.summary).toBe("User requested a portable backup.");
+    } finally {
+      source.close();
+      target.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

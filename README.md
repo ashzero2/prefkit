@@ -213,6 +213,14 @@ For lossless transfer, export preferences and evidence as JSON:
 pnpm prefkit export --format json > prefkit-export.json
 ```
 
+Import that JSON into another PrefKit store without overwriting existing rules:
+
+```bash
+pnpm prefkit import --input ./prefkit-export.json
+```
+
+Repeated imports are safe. Existing matching rules are skipped; conflicting IDs are reported and left unchanged.
+
 Create a SQLite backup without overwriting an existing file:
 
 ```bash

@@ -329,6 +329,19 @@ async function main(argv: string[]): Promise<number> {
         process.stdout.write(store.exportMarkdown());
         return 0;
       }
+      case "import": {
+        const input = flagOne(args, "input");
+        if (input === undefined || input.trim().length === 0) {
+          throw new Error("import requires --input path.json.");
+        }
+        const expandedInput = expandHome(input);
+        const inputPath = isAbsolute(expandedInput) ? expandedInput : resolve(process.cwd(), expandedInput);
+        const report = store.importJson(readFileSync(inputPath, "utf8"));
+        console.log(
+          `Imported PrefKit JSON: preferences=${report.preferencesImported} skipped=${report.preferencesSkipped} evidence=${report.evidenceImported} conflicts=${report.conflicts}`,
+        );
+        return report.conflicts === 0 ? 0 : 1;
+      }
       case "context": {
         const prompt = flagOne(args, "prompt") ?? args.positionals.join(" ");
         const trimmedPrompt = prompt.trim();
@@ -919,6 +932,7 @@ Usage:
   prefkit forget <id>
   prefkit review <id> --accept|--reject
   prefkit export --format markdown|json
+  prefkit import --input ./prefkit-export.json
   prefkit backup --output ./backups/prefs.db
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]

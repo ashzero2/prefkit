@@ -19,7 +19,9 @@ import type {
   PreferenceWithEvidence,
   RememberPreferenceInput,
   ScopeType,
+  ImportReport,
 } from "./types.js";
+import { parsePreferenceExport } from "./transfer.js";
 
 type Row = Record<string, unknown>;
 
@@ -259,11 +261,76 @@ export class SqlitePreferenceStore implements PreferenceStore {
   }
 
   exportJson(): string {
+    this.init();
     const preferences = this.allPreferences().map((preference) => ({
       preference,
       evidence: this.evidenceFor(preference.id),
     }));
     return `${JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), preferences }, null, 2)}\n`;
+  }
+
+  importJson(input: string): ImportReport {
+    this.init();
+    const transfer = parsePreferenceExport(input);
+
+    return this.db.transaction(() => {
+      const report: ImportReport = {
+        preferencesImported: 0,
+        preferencesSkipped: 0,
+        evidenceImported: 0,
+        conflicts: 0,
+      };
+      const pendingSupersessions: Array<{ id: string; supersedesId: string }> = [];
+
+      for (const item of transfer.preferences) {
+        const existing = this.db.prepare("SELECT * FROM preferences WHERE id = ?").get(item.preference.id) as Row | undefined;
+        if (existing !== undefined) {
+          if (!samePreference(rowToPreference(existing), item.preference)) {
+            report.conflicts += 1;
+            continue;
+          }
+          report.preferencesSkipped += 1;
+        } else {
+          this.insertPreference({ ...item.preference, supersedesId: null });
+          report.preferencesImported += 1;
+          if (item.preference.supersedesId !== null) {
+            pendingSupersessions.push({ id: item.preference.id, supersedesId: item.preference.supersedesId });
+          }
+        }
+
+        for (const evidence of item.evidence) {
+          const byHash = this.db.prepare("SELECT preference_id FROM evidence WHERE evidence_hash = ?").get(evidence.evidenceHash) as
+            | Row
+            | undefined;
+          if (byHash !== undefined) {
+            if (byHash.preference_id !== item.preference.id) {
+              report.conflicts += 1;
+            }
+            continue;
+          }
+
+          const byId = this.db.prepare("SELECT preference_id FROM evidence WHERE id = ?").get(evidence.id) as Row | undefined;
+          if (byId !== undefined) {
+            report.conflicts += 1;
+            continue;
+          }
+
+          this.insertEvidence(evidence);
+          report.evidenceImported += 1;
+        }
+      }
+
+      for (const supersession of pendingSupersessions) {
+        if (!this.preferenceExists(supersession.supersedesId)) {
+          throw new Error(`Preference to supersede was not found: ${supersession.supersedesId}`);
+        }
+        this.db
+          .prepare("UPDATE preferences SET supersedes_id = ? WHERE id = ?")
+          .run(supersession.supersedesId, supersession.id);
+      }
+
+      return report;
+    })();
   }
 
   private configure(): void {
@@ -448,6 +515,10 @@ function rowToPreference(row: Row): PreferenceRecord {
     supersedesId: nullableStringField(row, "supersedes_id"),
     metadata: jsonObjectField(row, "metadata_json"),
   };
+}
+
+function samePreference(left: PreferenceRecord, right: PreferenceRecord): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function rowToEvidence(row: Row): EvidenceRecord {

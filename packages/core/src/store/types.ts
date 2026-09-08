@@ -43,6 +43,13 @@ export interface PreferenceWithEvidence {
   evidence: EvidenceRecord[];
 }
 
+export interface ImportReport {
+  preferencesImported: number;
+  preferencesSkipped: number;
+  evidenceImported: number;
+  conflicts: number;
+}
+
 export interface RememberPreferenceInput {
   statement: string;
   scopeType?: ScopeType;
@@ -85,4 +92,5 @@ export interface PreferenceStore {
   review(id: string, decision: PreferenceReviewDecision): PreferenceRecord | null;
   exportMarkdown(): string;
   exportJson(): string;
+  importJson(input: string): ImportReport;
 }
