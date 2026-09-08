@@ -253,7 +253,10 @@ function needsUserConfirmation(
 
     const hasPromotionEvidence =
       hasGlobalWording(input.event.userPrompt) || input.repeatedAcrossRepositories === true;
-    return !hasPromotionEvidence || evidenceWeight < options.globalPromotionThreshold;
+    const hasRepeatedEvidence =
+      (input.existingPositiveEvidence !== undefined && input.existingPositiveEvidence >= 1) ||
+      input.repeatedAcrossRepositories === true;
+    return !hasPromotionEvidence || !hasRepeatedEvidence || evidenceWeight < options.globalPromotionThreshold;
   }
 
   return evidenceWeight < options.activationWeight;

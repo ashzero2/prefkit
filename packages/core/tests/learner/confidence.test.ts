@@ -86,6 +86,45 @@ describe("preference confidence", () => {
     expect(decision.reasons.map((reason) => reason.code)).toContain("repeated-across-repositories");
   });
 
+  it("keeps a one-off global extraction as a candidate even when confirmation is disabled", () => {
+    const decision = calculatePreferenceConfidence({
+      event: event({
+        eventType: "explicit_memory",
+        userPrompt: "I prefer pnpm for these projects.",
+      }),
+      extraction: extraction({
+        scopeType: "global",
+        evidenceType: "USER_EXPLICIT",
+      }),
+      options: {
+        requireConfirmationForGlobal: false,
+      },
+    });
+
+    expect(decision.status).toBe("candidate");
+    expect(decision.needsConfirmation).toBe(true);
+  });
+
+  it("allows global activation after prior positive evidence", () => {
+    const decision = calculatePreferenceConfidence({
+      event: event({
+        eventType: "explicit_memory",
+        userPrompt: "I prefer pnpm for these projects.",
+      }),
+      extraction: extraction({
+        scopeType: "global",
+        evidenceType: "USER_EXPLICIT",
+      }),
+      existingPositiveEvidence: 1,
+      options: {
+        requireConfirmationForGlobal: false,
+      },
+    });
+
+    expect(decision.status).toBe("active");
+    expect(decision.needsConfirmation).toBe(false);
+  });
+
   it("keeps model-only evidence weak", () => {
     const decision = calculatePreferenceConfidence({
       event: event({

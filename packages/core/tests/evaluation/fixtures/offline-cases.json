@@ -91,5 +91,32 @@
       }
     ],
     "relevantStatements": ["For product and app naming, prefer elegant professional names."]
+  },
+  {
+    "name": "one-off global guidance stays reviewable",
+    "kind": "confidence",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "explicit_memory",
+      "userPrompt": "I prefer pnpm for these projects.",
+      "assistantSummary": "The user stated a preference.",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "extraction": {
+      "shouldLearn": true,
+      "statement": "Prefer pnpm for JavaScript package management.",
+      "scopeType": "global",
+      "scopeValue": null,
+      "category": "tooling",
+      "tags": ["javascript", "package-manager"],
+      "evidenceType": "USER_EXPLICIT",
+      "polarity": "positive",
+      "proposedStatus": "active",
+      "needsConfirmation": false,
+      "rationale": "The user stated a package manager preference.",
+      "contradictions": []
+    },
+    "expectedStatus": "candidate"
   }
 ]

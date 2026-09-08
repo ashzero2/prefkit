@@ -388,4 +388,4 @@ Completed:
 
 Next:
 
-- Impact instrumentation and fixture-based evaluation: opt-in local counters for retrieval hits, prevented corrections, and injection token spend
+- Correction linkage: connect later explicit corrections to prior injected context using privacy-safe local metadata
