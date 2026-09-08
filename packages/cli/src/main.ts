@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -27,6 +27,8 @@ import {
   type OpenCodeDoctorReport,
   type OpenCodeInstallReport,
 } from "./opencode.js";
+import { archiveReplayFile, queueFiles } from "./replay.js";
+import { runBackgroundWorker } from "./worker.js";
 
 interface ParsedArgs {
   command: string | undefined;
@@ -48,6 +50,7 @@ interface ReplayFileResult {
   file: string;
   status: string;
   persisted: boolean;
+  processed: boolean;
   preferenceId?: string;
   error?: string;
 }
@@ -120,6 +123,60 @@ async function main(argv: string[]): Promise<number> {
       return report.failed === 0 ? 0 : 1;
     } finally {
       store?.close();
+    }
+  }
+
+  if (args.command === "worker") {
+    const queueDir = flagOne(args, "queue-dir") ?? loadResult.config.learning.queuePath;
+    const intervalMs = parsePositiveIntegerFlag(
+      flagOne(args, "interval-ms"),
+      loadResult.config.learning.workerPollMs,
+    );
+    const batchSize = parsePositiveIntegerFlag(
+      flagOne(args, "batch-size"),
+      loadResult.config.learning.workerBatchSize,
+    );
+
+    if (!loadResult.config.learning.enabled || loadResult.config.learning.mode === "off") {
+      console.log("PrefKit worker: learning is disabled.");
+      return 0;
+    }
+    if (loadResult.config.learning.mode === "manual") {
+      console.log("PrefKit worker: learning mode is manual; use prefkit replay --persist.");
+      return 0;
+    }
+
+    const store = createPreferenceStore(loadResult.config.store);
+    try {
+      const result = await runBackgroundWorker({
+        queueDir,
+        intervalMs,
+        batchSize,
+        once: args.flags.has("once"),
+        processBatch: async () => {
+          const report = await replayEvents({
+            queueDir,
+            limit: batchSize,
+            persist: true,
+            store,
+            config: loadResult.config,
+          });
+          if (args.flags.has("once") || report.total > 0) {
+            printReplayReport(report);
+          }
+          return report;
+        },
+        onError: (error) => {
+          console.error(`PrefKit worker batch failed: ${error instanceof Error ? error.message : String(error)}`);
+        },
+      });
+      console.log(`PrefKit worker: ${result.status}`);
+      if (result.status === "already-running") {
+        console.log(`queueDir=${queueDir}`);
+      }
+      return 0;
+    } finally {
+      store.close();
     }
   }
 
@@ -201,6 +258,15 @@ async function main(argv: string[]): Promise<number> {
       case "forget": {
         const updated = store.forget(requiredId(args));
         return printMutation("Suppressed", updated);
+      }
+      case "review": {
+        const accepting = args.flags.has("accept");
+        const rejecting = args.flags.has("reject");
+        if (accepting === rejecting) {
+          throw new Error("review requires exactly one of --accept or --reject.");
+        }
+        const updated = store.review(requiredId(args), accepting ? "accept" : "reject");
+        return printMutation(accepting ? "Accepted" : "Rejected", updated);
       }
       case "export": {
         const format = flagOne(args, "format") ?? "markdown";
@@ -347,6 +413,17 @@ function parseNumberFlag(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parsePositiveIntegerFlag(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, got: ${value}`);
+  }
+  return parsed;
+}
+
 function readJsonFile(path: string): unknown {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as unknown;
@@ -389,10 +466,18 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
         report.persisted += 1;
       }
 
+      const processable =
+        result.ok || result.status === "learning_skipped" || result.status === "input_too_large";
+      const processed = input.persist && processable;
+      if (processed) {
+        archiveReplayFile(file, input.queueDir);
+      }
+
       report.files.push({
         file,
         status: result.status,
         persisted: persisted !== null,
+        processed,
         ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
         ...(result.ok || result.errors.length === 0 ? {} : { error: result.errors[0] }),
       });
@@ -402,6 +487,7 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
         file,
         status: "failed",
         persisted: false,
+        processed: false,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -462,23 +548,6 @@ function eventFileName(date: Date, id: string): string {
   return `${date.toISOString().replace(/[:.]/g, "-")}-${id}.json`;
 }
 
-function queueFiles(queueDir: string, limit: number): string[] {
-  const boundedLimit = Math.max(0, Math.min(Math.floor(limit), 500));
-  if (boundedLimit === 0) {
-    return [];
-  }
-  if (!existsSync(queueDir)) {
-    return [];
-  }
-
-  return readdirSync(queueDir)
-    .filter((entry) => entry.endsWith(".json"))
-    .map((entry) => join(queueDir, entry))
-    .filter((path) => statSync(path).isFile())
-    .sort()
-    .slice(0, boundedLimit);
-}
-
 function learnExitCode(result: PreferenceExtractionResult): number {
   if (result.ok) {
     return 0;
@@ -497,6 +566,10 @@ function persistLearnResult(
   if (!result.ok || !result.confidence.shouldStore || result.extraction.statement === null) {
     return null;
   }
+
+  const supersedingContradiction = result.extraction.contradictions.find(
+    (contradiction) => contradiction.action === "supersede_existing" && store.get(contradiction.preferenceId) !== null,
+  );
 
   const rememberInput: RememberPreferenceInput = {
     statement: result.extraction.statement,
@@ -527,6 +600,7 @@ function persistLearnResult(
       confidenceReasons: result.confidence.reasons.map((reason) => reason.code),
       signalReasons: result.prefilter.reasons.map((reason) => reason.code),
     },
+    ...(supersedingContradiction === undefined ? {} : { supersedesId: supersedingContradiction.preferenceId }),
   };
 
   if (result.extraction.scopeValue !== null) {
@@ -599,7 +673,7 @@ function printReplayReport(report: ReplayReport): void {
   for (const file of report.files) {
     const persisted = file.preferenceId === undefined ? String(file.persisted) : `${file.persisted}:${file.preferenceId}`;
     const error = file.error === undefined ? "" : ` error=${file.error}`;
-    console.log(`- ${file.file} status=${file.status} persisted=${persisted}${error}`);
+    console.log(`- ${file.file} status=${file.status} persisted=${persisted} processed=${file.processed}${error}`);
   }
 }
 
@@ -685,6 +759,9 @@ function printWhy(record: NonNullable<ReturnType<ReturnType<typeof createPrefere
   console.log(`status=${record.preference.status} confidence=${record.preference.confidence.toFixed(2)}`);
   console.log(`scope=${record.preference.scopeType}${record.preference.scopeValue === null ? "" : `:${record.preference.scopeValue}`}`);
   console.log(`category=${record.preference.category} tags=${record.preference.tags.join(", ") || "none"}`);
+  if (record.preference.supersedesId !== null) {
+    console.log(`supersedes=${record.preference.supersedesId}`);
+  }
   console.log("");
   console.log("Evidence:");
   for (const evidence of record.evidence) {
@@ -711,11 +788,15 @@ Usage:
   prefkit why <id>
   prefkit pin <id>
   prefkit forget <id>
+  prefkit review <id> --accept|--reject
   prefkit export --format markdown
   prefkit context --prompt "I need to name an app"
   prefkit learn --event-file event.json [--persist]
   prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100]
+    Successful and skipped persisted events move to queue/processed; failures remain for retry.
+  prefkit worker [--queue-dir ~/.prefkit/queue] [--interval-ms 5000] [--batch-size 1] [--once]
+    Watches the queue and persists learning events in the background. One worker runs per queue.
   prefkit doctor [--config .prefkit.json]
   prefkit opencode install [--write] [--opencode-config opencode.jsonc]
   prefkit opencode doctor [--opencode-config opencode.jsonc]

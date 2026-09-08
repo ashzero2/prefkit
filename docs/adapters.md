@@ -15,6 +15,9 @@ Adapter responsibilities:
 - write compact learner event JSON files into `learning.queuePath`
 - keep hook failures non-blocking
 - avoid storing full transcripts or large code blobs
-- let `prefkit replay` perform slower local model extraction later
+- let the background worker perform slower local model extraction later
+- keep `prefkit replay --persist` available for manual recovery
+
+The worker is shared by adapters. It owns one queue at a time, uses a lock to prevent duplicate consumers, processes bounded batches, and periodically rescans in case a filesystem notification is missed. Adapters may auto-start it, but they must never run model extraction in the prompt hook.
 
 The event format is documented in [events.md](events.md).

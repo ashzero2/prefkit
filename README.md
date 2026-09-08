@@ -12,10 +12,66 @@ The current implementation supports:
 - redaction before model calls
 - deterministic signal gating and confidence scoring
 - single-event learning with optional persistence
-- queue replay for adapter-produced event files
-- OpenCode context injection and learner event queueing
+- automatic background queue learning with manual replay recovery
+- reviewable contradiction candidates and supersession links
+- OpenCode and Claude Code context injection and learner event queueing
 
-The OpenCode adapter is available now; Claude Code, Codex, and MCP adapters are planned. The core package is intentionally adapter-agnostic.
+The OpenCode and Claude Code adapters are available now; Codex and MCP adapters are planned. The core package is intentionally adapter-agnostic.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  A[Agent adapter] -->|prompt| B[PrefKit CLI]
+  B -->|read-only lookup| C[(SQLite preferences)]
+  C -->|bounded relevant rules| A
+  A -->|strong learning event| Q[Queue JSON]
+  A -->|ensure one worker| W[prefkit worker]
+  Q --> W
+  W --> R[Replay one bounded batch]
+  R --> S[Redact and prefilter]
+  S --> L[Local Ollama extractor]
+  L --> V[Validate and score]
+  V --> C
+  R -->|success or skip| P[queue/processed]
+  R -->|failure| Q
+```
+
+| Part | Responsibility | Model call |
+| --- | --- | --- |
+| Adapter | Connects an agent CLI to PrefKit hooks | No |
+| CLI and core | Retrieve, render, store, review, and replay | Only during learning |
+| SQLite | Preferences, evidence, status, and provenance | No |
+| Ollama | Extracts one candidate preference from redacted evidence | Local only by default |
+
+```text
+~/.prefkit/
+  prefs.db              preferences and evidence
+  queue/*.json          pending events and retryable failures
+  queue/processed/*.json  successfully handled events
+  queue/.worker.lock    single-worker lease
+```
+
+### OpenCode request flow
+
+```text
+user prompt
+  -> chat.message captures the prompt
+  -> prefkit context searches SQLite and renders bounded context
+  -> OpenCode model-message transform appends that context
+  -> model answers with the preference available
+```
+
+### Learning and review flow
+
+```text
+strong prompt/correction
+  -> queue/<event>.json
+  -> background worker
+  -> redact -> signal gate -> Ollama JSON -> schema validation -> confidence score
+  -> candidate/active preference + evidence in SQLite
+  -> contradiction candidate: prefkit why <id> -> prefkit review <id> --accept|--reject
+```
 
 ## Install
 
@@ -69,6 +125,8 @@ PREFKIT_OLLAMA_BASE_URL=http://127.0.0.1:11434
 PREFKIT_OLLAMA_MODEL=qwen3:4b
 PREFKIT_MODEL_TEMPERATURE=0
 PREFKIT_MODEL_TIMEOUT_MS=20000
+PREFKIT_WORKER_POLL_MS=5000
+PREFKIT_WORKER_BATCH_SIZE=1
 PREFKIT_REDACT_SECRETS=true
 ```
 
@@ -131,6 +189,17 @@ pnpm prefkit pin <pref_id>
 pnpm prefkit forget <pref_id>
 ```
 
+Review a candidate produced by learning:
+
+```bash
+pnpm prefkit list --status candidate
+pnpm prefkit why <pref_id>
+pnpm prefkit review <pref_id> --accept
+pnpm prefkit review <pref_id> --reject
+```
+
+Accepting a candidate with a supersession link activates it and marks the older preference as `superseded`. Rejecting it keeps the older preference unchanged.
+
 Export:
 
 ```bash
@@ -185,6 +254,16 @@ pnpm prefkit replay --queue-dir examples/events --limit 10
 pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
 ```
 
+With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Model errors and invalid events stay in the queue for retry or inspection. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
+
+During normal adapter use, the worker starts automatically after the first strong learning event. Run it manually when recovering a queue or using an adapter that does not provide auto-start:
+
+```bash
+pnpm prefkit worker --queue-dir ~/.prefkit/queue
+```
+
+Only one worker owns a queue at a time. Multiple agent sessions can append events concurrently; the worker processes them sequentially and context retrieval can continue while SQLite writes are happening.
+
 See [docs/model-qa.md](docs/model-qa.md) for the real-model tuning checklist.
 
 Weak events are skipped before any model call:
@@ -195,7 +274,7 @@ pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
 
 ## OpenCode
 
-The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued for later replay.
+The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued immediately, and the adapter starts one detached PrefKit worker so learning happens outside the prompt path.
 
 ```bash
 pnpm prefkit opencode install
@@ -203,6 +282,19 @@ pnpm prefkit opencode doctor
 ```
 
 See [docs/opencode.md](docs/opencode.md) for config examples, smoke checks, and replay flow.
+
+## Claude Code
+
+The Claude Code plugin uses the documented `UserPromptSubmit` hook. One synchronous hook requests bounded context through `prefkit context`; a separate asynchronous hook queues strong preference prompts and starts the background worker after the queue accepts the event. The learning hook emits no stdout, so queue diagnostics cannot be mistaken for Claude context.
+
+For local testing from this repository:
+
+```bash
+npm install --global @prefkit/cli
+claude --plugin-dir packages/adapter-claude
+```
+
+The CLI must be available as `prefkit` on `PATH`. For a custom executable, set `PREFKIT_COMMAND`; set `PREFKIT_ARGS` to a JSON string array when a wrapper such as pnpm is required. See [docs/claude.md](docs/claude.md) for configuration and checks.
 
 ## Event JSON
 
@@ -250,19 +342,18 @@ PrefKit is conservative by design:
 - global preferences require confirmation by default
 - skipped and oversized events do not call the model
 
-## Current Roadmap
+## Roadmap
 
 Completed:
 
-- Phase 0: workspace, config, doctor
-- Phase 1: SQLite storage and manual preference commands
-- Phase 2: deterministic retrieval and bounded context rendering
-- Phase 3: learner schemas, redaction, prefilter, confidence engine, extractor runner, Ollama JSON generation, `learn`, persistence, replay
-- Phase 5a: OpenCode context adapter, learner event queue, setup doctor
+- Configuration, diagnostics, and SQLite storage
+- Manual preference commands and provenance inspection
+- Deterministic retrieval and bounded context rendering
+- Local learning, redaction, confidence scoring, persistence, and replay
+- OpenCode context injection, learner event queueing, and setup diagnostics
+- Claude Code context injection, asynchronous learner event queueing, and packaged plugin layout
 
 Next:
 
-- Publish the versioned `@prefkit/cli`, `@prefkit/core`, and `@prefkit/opencode` packages to npm
-- Phase 4 Claude Code adapter
-- Phase 6 Codex adapter
+- Codex adapter
 - MCP tools for portable preference retrieval and explicit memory

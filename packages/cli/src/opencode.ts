@@ -266,6 +266,7 @@ function openCodePluginEntry(
       enabled: true,
       injectContext: true,
       queueEvents: true,
+      autoStartWorker: true,
       ...(options.prefkitConfigPath === undefined ? {} : { configPath: options.prefkitConfigPath }),
       includeWhy: false,
       limit: 8,

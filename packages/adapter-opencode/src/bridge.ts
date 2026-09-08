@@ -16,6 +16,7 @@ const defaultCommand = "prefkit";
 const defaultTimeoutMs = 5000;
 const maxOutputBytes = 64 * 1024;
 const maxQueueOutputBytes = 16 * 1024;
+const workerStartKeys = new Set<string>();
 
 export interface OpenCodeContextBridgeInput {
   output: OpenCodeSystemTransformOutput;
@@ -32,6 +33,11 @@ export interface OpenCodeContextLookupInput {
 
 export interface OpenCodeQueueBridgeInput {
   event: OpenCodeContextEvent;
+  cwd: string;
+  options: OpenCodeAdapterOptions;
+}
+
+export interface OpenCodeWorkerBridgeInput {
   cwd: string;
   options: OpenCodeAdapterOptions;
 }
@@ -92,10 +98,10 @@ export async function loadOpenCodePreferenceContextViaCli(
 
 export async function queueOpenCodeLearnerEventViaCli(
   input: OpenCodeQueueBridgeInput,
-): Promise<void> {
+): Promise<boolean> {
   const prompt = latestPrompt(input.event);
   if (!shouldQueueOpenCodeLearnerEvent(prompt, input.options)) {
-    return;
+    return false;
   }
 
   const event = learnerEventFromOpenCodeContext({
@@ -117,7 +123,47 @@ export async function queueOpenCodeLearnerEventViaCli(
     args.push("--queue-weak-events");
   }
 
-  await runQueueCommand(input.options.prefkitCommand ?? defaultCommand, args, input.cwd, event, input.options.contextTimeoutMs);
+  return runQueueCommand(
+    input.options.prefkitCommand ?? defaultCommand,
+    args,
+    input.cwd,
+    event,
+    input.options.contextTimeoutMs,
+  );
+}
+
+export function ensureOpenCodeWorkerViaCli(input: OpenCodeWorkerBridgeInput): void {
+  if (input.options.enabled === false || input.options.queueEvents === false || input.options.autoStartWorker === false) {
+    return;
+  }
+
+  const command = input.options.prefkitCommand ?? defaultCommand;
+  const args = [
+    ...(input.options.prefkitArgs ?? []),
+    ...(input.options.configPath === undefined ? [] : ["--config", input.options.configPath]),
+    "worker",
+    ...(input.options.queueDir === undefined ? [] : ["--queue-dir", input.options.queueDir]),
+  ];
+  const key = JSON.stringify({ command, args, cwd: input.cwd });
+  if (workerStartKeys.has(key)) {
+    return;
+  }
+  workerStartKeys.add(key);
+
+  try {
+    const child = spawn(command, args, {
+      cwd: input.cwd,
+      env: process.env,
+      stdio: "ignore",
+      detached: true,
+      windowsHide: true,
+    });
+    child.once("error", () => workerStartKeys.delete(key));
+    child.once("exit", () => workerStartKeys.delete(key));
+    child.unref();
+  } catch {
+    workerStartKeys.delete(key);
+  }
 }
 
 function appendSystemContext(system: string[], context: string): void {
@@ -165,8 +211,8 @@ async function runQueueCommand(
   cwd: string,
   event: OpenCodeLearnerEvent,
   timeoutMs: number | undefined,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
       env: process.env,
@@ -181,14 +227,14 @@ async function runQueueCommand(
       finish(new Error(`CLI queue timed out after ${boundedTimeout(timeoutMs)} ms`));
     }, boundedTimeout(timeoutMs));
 
-    const finish = (error?: Error): void => {
+    const finish = (error?: Error, queued = false): void => {
       if (settled) {
         return;
       }
       settled = true;
       clearTimeout(timer);
       if (error === undefined) {
-        resolve();
+        resolve(queued);
       } else {
         reject(new Error(`CLI learner queue failed: ${error.message}${stderr.trim().length > 0 ? `; stderr: ${stderr.trim().slice(0, 1000)}` : ""}`));
       }
@@ -203,7 +249,7 @@ async function runQueueCommand(
     child.once("error", (error) => finish(error));
     child.once("close", (code) => {
       if (code === 0) {
-        finish();
+        finish(undefined, stdout.trim().includes("queued=true"));
       } else {
         finish(new Error(`process exited with code ${code ?? "unknown"}${stdout.trim().length > 0 ? `; output: ${stdout.trim().slice(0, 1000)}` : ""}`));
       }

@@ -47,6 +47,44 @@ describe("SqlitePreferenceStore", () => {
       const suppressed = store.get(remembered.preference.id);
       expect(suppressed?.preference.status).toBe("suppressed");
       expect(suppressed?.evidence).toHaveLength(1);
+      expect(store.list({ status: "suppressed" })).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("treats duplicate evidence as an idempotent write", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const input = {
+        statement: "Prefer concise status updates.",
+        evidence: { summary: "User explicitly requested concise status updates." },
+      };
+      const first = store.remember(input);
+      const second = store.remember(input);
+
+      expect(second.preference.id).toBe(first.preference.id);
+      expect(store.list()).toHaveLength(1);
+      expect(store.get(first.preference.id)?.evidence).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("reviews a proposed supersession atomically", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const existing = store.remember({ statement: "Use pnpm in this repository." });
+      const candidate = store.remember({
+        statement: "Use npm in this repository.",
+        status: "candidate",
+        supersedesId: existing.preference.id,
+        evidence: { summary: "The user corrected the package manager." },
+      });
+
+      expect(store.get(existing.preference.id)?.preference.status).toBe("active");
+      expect(store.review(candidate.preference.id, "accept")?.status).toBe("active");
+      expect(store.get(existing.preference.id)?.preference.status).toBe("superseded");
     } finally {
       store.close();
     }

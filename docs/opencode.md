@@ -27,6 +27,7 @@ OpenCode chat.message hook
   -> cache it briefly by session ID
   -> send preference-shaped events to `prefkit queue` over stdin
   -> Node CLI validates, redacts, gates, and writes the queue file
+  -> start one detached `prefkit worker` for the queue
 OpenCode experimental.chat.messages.transform hook
   -> consume the cached prompt
   -> invoke the Node-based `prefkit context` CLI
@@ -39,7 +40,7 @@ OpenCode experimental.chat.system.transform hook
 
 The hook catches errors and logs a warning instead of throwing.
 
-It does not run local model learning inside the prompt path.
+It does not run local model learning inside the prompt path. The worker processes queued events asynchronously, so two OpenCode instances can write to the same queue without each running a learner. A per-queue lock ensures only one worker consumes that queue.
 
 ## Local Development Loading
 
@@ -81,6 +82,7 @@ You can also add the plugin entry manually to `opencode.jsonc`:
         "queueWeakEvents": false,
         "maxPromptChars": 4000,
         "prefkitCommand": "prefkit",
+        "autoStartWorker": true,
         "contextTimeoutMs": 5000,
         "notifyOnInjection": "once-per-session",
         "notificationDurationMs": 5000
@@ -141,10 +143,11 @@ To check queue capture, prompt OpenCode with:
 Remember that I prefer concise status updates.
 ```
 
-Then inspect the queue configured by `learning.queuePath` or `queueDir`:
+The adapter starts the worker automatically after a strong preference prompt. To inspect or recover events, use:
 
 ```bash
-pnpm prefkit replay --queue-dir ~/.prefkit/queue --limit 10
+pnpm prefkit worker --queue-dir ~/.prefkit/queue --once
+pnpm prefkit list --all --limit 20
 ```
 
 Expected:
@@ -152,7 +155,8 @@ Expected:
 - explicit memory/correction prompts create `.json` event files
 - weak prompts do not queue by default
 - queued files are redacted before they are written
-- replay performs local model learning later, outside the OpenCode hook
+- the worker performs local model learning later, outside the OpenCode hook
+- `prefkit replay --persist` remains available for manual recovery and diagnostics
 
 ## Packaging Status
 

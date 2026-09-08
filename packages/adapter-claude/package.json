@@ -1,9 +1,17 @@
 {
-  "name": "@prefkit/adapter-claude",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@prefkit/claude",
+  "version": "0.1.0",
+  "description": "Claude Code plugin for PrefKit preference context injection and background learning.",
   "type": "module",
-  "dependencies": {
-    "@prefkit/core": "workspace:*"
+  "files": [
+    ".claude-plugin",
+    "hooks",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -153,9 +153,10 @@ describe("OpenCode plugin entry", () => {
   });
 });
 
-function testCliOptions(): { prefkitCommand: string; prefkitArgs: string[] } {
+function testCliOptions(): { prefkitCommand: string; prefkitArgs: string[]; autoStartWorker: false } {
   return {
     prefkitCommand: process.execPath,
     prefkitArgs: ["--import", "tsx/esm", join(process.cwd(), "packages/cli/src/main.ts")],
+    autoStartWorker: false,
   };
 }

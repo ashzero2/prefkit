@@ -10,7 +10,9 @@
     "minSignalScore": 3,
     "globalPromotionThreshold": 8,
     "requireConfirmationForGlobal": true,
-    "queuePath": "~/.prefkit/queue"
+    "queuePath": "~/.prefkit/queue",
+    "workerPollMs": 5000,
+    "workerBatchSize": 1
   },
   "localModel": {
     "provider": "ollama",

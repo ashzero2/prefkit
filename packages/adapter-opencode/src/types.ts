@@ -12,6 +12,7 @@ export interface OpenCodeAdapterOptions {
   prefkitCommand?: string;
   prefkitArgs?: string[];
   contextTimeoutMs?: number;
+  autoStartWorker?: boolean;
   notifyOnInjection?: OpenCodeNotificationMode;
   notificationDurationMs?: number;
 }

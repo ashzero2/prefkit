@@ -89,6 +89,7 @@ export type {
   EvidenceSourceType,
   ListPreferencesOptions,
   PreferenceRecord,
+  PreferenceReviewDecision,
   PreferenceStatus,
   PreferenceStore,
   PreferenceWithEvidence,
