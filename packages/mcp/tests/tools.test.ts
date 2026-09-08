@@ -16,7 +16,7 @@ const injection = defaultConfig.injection;
 
 function freshStore() {
   const dir = mkdtempSync(join(tmpdir(), "prefkit-mcp-tools-"));
-  const store = createPreferenceStore({ path: join(dir, "prefs.db") });
+  const store = createPreferenceStore({ ...defaultConfig.store, path: join(dir, "prefs.db") });
   store.init();
   return store;
 }

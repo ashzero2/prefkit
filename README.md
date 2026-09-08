@@ -16,7 +16,7 @@ The current implementation supports:
 - reviewable contradiction candidates and supersession links
 - OpenCode and Claude Code context injection and learner event queueing
 
-The OpenCode, Claude Code, and Codex adapters are available now; the MCP adapter is planned. The core package is intentionally adapter-agnostic.
+The OpenCode, Claude Code, and Codex adapters plus the MCP server are available now. The core package is intentionally adapter-agnostic.
 
 ## Architecture
 
@@ -353,7 +353,8 @@ Completed:
 - OpenCode context injection, learner event queueing, and setup diagnostics
 - Claude Code context injection, asynchronous learner event queueing, and packaged plugin layout
 - Codex context injection, asynchronous learner event queueing, hooks installer/doctor, and AGENTS.md fallback
+- MCP server with 7 annotated preference tools, stdio transport, and `prefkit mcp` passthrough
 
 Next:
 
-- MCP tools for portable preference retrieval and explicit memory
+- Hardening: warm-context latency budget, queue retry behavior, secret-redaction corpus, backup/export/import, conflict review
