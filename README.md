@@ -388,4 +388,4 @@ Completed:
 
 Next:
 
-- Correction linkage: connect later explicit corrections to prior injected context using privacy-safe local metadata
+- Outcome evaluation: compare explicit correction rates for sessions with and without injected context; never infer prevention from silence
