@@ -183,6 +183,14 @@ Inspect provenance:
 pnpm prefkit why <pref_id>
 ```
 
+Inspect local preference and evidence counts without sending telemetry:
+
+```bash
+pnpm prefkit stats
+```
+
+The inventory reports status, evidence source, and polarity counts. It does not claim retrieval hit rate or prevented corrections; those require explicit event instrumentation that is not enabled yet.
+
 Pin or suppress a preference:
 
 ```bash

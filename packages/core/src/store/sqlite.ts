@@ -20,12 +20,16 @@ import type {
   RememberPreferenceInput,
   ScopeType,
   ImportReport,
+  PreferenceStats,
 } from "./types.js";
 import { parsePreferenceExport } from "./transfer.js";
 
 type Row = Record<string, unknown>;
 
 const activeStatuses = new Set<PreferenceStatus>(["candidate", "active", "pinned"]);
+const preferenceStatuses = ["candidate", "active", "pinned", "suppressed", "superseded", "rejected"] as const;
+const evidenceSourceTypes = ["USER_EXPLICIT", "MODEL_EXTRACTED", "AGENT_EVENT", "IMPORT"] as const;
+const evidencePolarities = ["positive", "negative", "neutral"] as const;
 
 export class SqlitePreferenceStore implements PreferenceStore {
   private readonly db: DatabaseHandle;
@@ -194,6 +198,46 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return {
       preference: rowToPreference(row),
       evidence: this.evidenceFor(id),
+    };
+  }
+
+  stats(): PreferenceStats {
+    this.init();
+
+    const byStatus = emptyCounts(preferenceStatuses);
+    for (const row of this.db.prepare("SELECT status, COUNT(*) AS count FROM preferences GROUP BY status").all() as Row[]) {
+      const status = stringField(row, "status");
+      if (isPreferenceStatus(status)) {
+        byStatus[status] = numberField(row, "count");
+      }
+    }
+
+    const bySourceType = emptyCounts(evidenceSourceTypes);
+    const byPolarity = emptyCounts(evidencePolarities);
+    for (const row of this.db
+      .prepare("SELECT source_type, polarity, COUNT(*) AS count FROM evidence GROUP BY source_type, polarity")
+      .all() as Row[]) {
+      const count = numberField(row, "count");
+      const sourceType = stringField(row, "source_type");
+      const polarity = stringField(row, "polarity");
+      if (isEvidenceSourceType(sourceType)) {
+        bySourceType[sourceType] += count;
+      }
+      if (isEvidencePolarity(polarity)) {
+        byPolarity[polarity] += count;
+      }
+    }
+
+    return {
+      preferences: {
+        total: Object.values(byStatus).reduce((total, count) => total + count, 0),
+        byStatus,
+      },
+      evidence: {
+        total: Object.values(byPolarity).reduce((total, count) => total + count, 0),
+        bySourceType,
+        byPolarity,
+      },
     };
   }
 
@@ -515,6 +559,22 @@ function rowToPreference(row: Row): PreferenceRecord {
     supersedesId: nullableStringField(row, "supersedes_id"),
     metadata: jsonObjectField(row, "metadata_json"),
   };
+}
+
+function emptyCounts<T extends string>(values: readonly T[]): Record<T, number> {
+  return Object.fromEntries(values.map((value) => [value, 0])) as Record<T, number>;
+}
+
+function isPreferenceStatus(value: string): value is PreferenceStatus {
+  return (preferenceStatuses as readonly string[]).includes(value);
+}
+
+function isEvidenceSourceType(value: string): value is EvidenceSourceType {
+  return (evidenceSourceTypes as readonly string[]).includes(value);
+}
+
+function isEvidencePolarity(value: string): value is EvidencePolarity {
+  return (evidencePolarities as readonly string[]).includes(value);
 }
 
 function samePreference(left: PreferenceRecord, right: PreferenceRecord): boolean {

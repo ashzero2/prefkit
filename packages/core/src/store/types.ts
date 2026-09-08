@@ -50,6 +50,18 @@ export interface ImportReport {
   conflicts: number;
 }
 
+export interface PreferenceStats {
+  preferences: {
+    total: number;
+    byStatus: Record<PreferenceStatus, number>;
+  };
+  evidence: {
+    total: number;
+    bySourceType: Record<EvidenceSourceType, number>;
+    byPolarity: Record<EvidencePolarity, number>;
+  };
+}
+
 export interface RememberPreferenceInput {
   statement: string;
   scopeType?: ScopeType;
@@ -87,6 +99,7 @@ export interface PreferenceStore {
   list(options?: ListPreferencesOptions): PreferenceRecord[];
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
+  stats(): PreferenceStats;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;
   review(id: string, decision: PreferenceReviewDecision): PreferenceRecord | null;

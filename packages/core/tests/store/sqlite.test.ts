@@ -118,6 +118,53 @@ describe("SqlitePreferenceStore", () => {
     }
   });
 
+  it("reports local preference and evidence inventory without exposing summaries", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const active = store.remember({
+        statement: "Prefer focused tests.",
+        evidence: { sourceType: "USER_EXPLICIT", polarity: "positive" },
+      });
+      const candidate = store.remember({
+        statement: "Prefer broad integration tests.",
+        status: "candidate",
+        evidence: { sourceType: "MODEL_EXTRACTED", polarity: "neutral" },
+      });
+      store.forget(active.preference.id);
+      store.review(candidate.preference.id, "reject");
+
+      expect(store.stats()).toEqual({
+        preferences: {
+          total: 2,
+          byStatus: {
+            candidate: 0,
+            active: 0,
+            pinned: 0,
+            suppressed: 1,
+            superseded: 0,
+            rejected: 1,
+          },
+        },
+        evidence: {
+          total: 2,
+          bySourceType: {
+            USER_EXPLICIT: 1,
+            MODEL_EXTRACTED: 1,
+            AGENT_EVENT: 0,
+            IMPORT: 0,
+          },
+          byPolarity: {
+            positive: 1,
+            negative: 0,
+            neutral: 1,
+          },
+        },
+      });
+    } finally {
+      store.close();
+    }
+  });
+
   it("exports inspectable markdown", () => {
     const store = createPreferenceStore(testStoreConfig());
     try {

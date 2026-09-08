@@ -300,6 +300,10 @@ async function main(argv: string[]): Promise<number> {
         printWhy(record);
         return 0;
       }
+      case "stats": {
+        printStats(store.stats());
+        return 0;
+      }
       case "pin": {
         const updated = store.pin(requiredId(args));
         return printMutation("Pinned", updated);
@@ -911,6 +915,21 @@ function printWhy(record: NonNullable<ReturnType<ReturnType<typeof createPrefere
   }
 }
 
+function printStats(stats: ReturnType<ReturnType<typeof createPreferenceStore>["stats"]>): void {
+  console.log("PrefKit stats");
+  console.log(`preferences=${stats.preferences.total}`);
+  for (const [status, count] of Object.entries(stats.preferences.byStatus)) {
+    console.log(`preferences.${status}=${count}`);
+  }
+  console.log(`evidence=${stats.evidence.total}`);
+  for (const [sourceType, count] of Object.entries(stats.evidence.bySourceType)) {
+    console.log(`evidence.source.${sourceType}=${count}`);
+  }
+  for (const [polarity, count] of Object.entries(stats.evidence.byPolarity)) {
+    console.log(`evidence.polarity.${polarity}=${count}`);
+  }
+}
+
 function printMutation(label: string, preference: PreferenceRecord | null): number {
   if (preference === null) {
     console.error("Preference not found.");
@@ -927,6 +946,7 @@ Usage:
   prefkit init [--config .prefkit.json]
   prefkit remember "Prefer concise status updates" [--category communication] [--tag style]
   prefkit list [--all] [--status active] [--limit 20]
+  prefkit stats
   prefkit why <id>
   prefkit pin <id>
   prefkit forget <id>

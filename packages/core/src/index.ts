@@ -94,6 +94,7 @@ export type {
   PreferenceStore,
   PreferenceWithEvidence,
   ImportReport,
+  PreferenceStats,
   RememberPreferenceInput,
   ScopeType,
 } from "./store/types.js";
