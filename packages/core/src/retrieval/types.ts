@@ -1,5 +1,5 @@
 import type { InjectionConfig } from "../config/types.js";
-import type { PreferenceRecord } from "../store/types.js";
+import type { PreferenceRecord, PreferenceStatus } from "../store/types.js";
 
 export interface PreferenceSearchOptions {
   prompt: string;
@@ -9,6 +9,7 @@ export interface PreferenceSearchOptions {
   sessionId?: string;
   limit?: number;
   minConfidence?: number;
+  statuses?: PreferenceStatus[];
 }
 
 export interface PreferenceSearchResult {

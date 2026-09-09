@@ -312,6 +312,97 @@ describe("SqlitePreferenceStore", () => {
       target.close();
     }
   });
+
+  it("excludes unreviewed candidates from search by default and includes them when requested", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const active = store.remember({
+        statement: "Always format code with prettier.",
+        category: "formatting",
+      });
+      const candidate = store.remember({
+        statement: "Always format code with biome.",
+        category: "formatting",
+        status: "candidate",
+      });
+
+      // Default search: only active and pinned
+      const defaultResults = store.search({ prompt: "format code with tools" });
+      const defaultIds = defaultResults.map((r) => r.preference.id);
+      expect(defaultIds).toContain(active.preference.id);
+      expect(defaultIds).not.toContain(candidate.preference.id);
+
+      // Explicit search with candidate status
+      const candidateResults = store.search({
+        prompt: "format code with tools",
+        statuses: ["candidate"],
+      });
+      const candidateIds = candidateResults.map((r) => r.preference.id);
+      expect(candidateIds).toContain(candidate.preference.id);
+      expect(candidateIds).not.toContain(active.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("excludes candidates from list by default and filters by scope and offset in SQL", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({ statement: "Global rule 1", scopeType: "global" });
+      store.remember({ statement: "Global rule 2", scopeType: "global" });
+      store.remember({ statement: "Repo rule A", scopeType: "repository", scopeValue: "/workspace/project-a" });
+      store.remember({ statement: "Repo rule B", scopeType: "repository", scopeValue: "/workspace/project-b" });
+      store.remember({ statement: "Candidate rule", status: "candidate" });
+
+      // Default list excludes candidates
+      const defaultList = store.list();
+      expect(defaultList).toHaveLength(4);
+      expect(defaultList.map((p) => p.status)).not.toContain("candidate");
+
+      // Filter by status candidate
+      const candidates = store.list({ status: "candidate" });
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]?.statement).toBe("Candidate rule");
+
+      // Filter by scope
+      const repoPrefs = store.list({ scope: "repository" });
+      expect(repoPrefs).toHaveLength(2);
+
+      // Pagination with limit and offset
+      const page1 = store.list({ scope: "repository", limit: 1, offset: 0 });
+      const page2 = store.list({ scope: "repository", limit: 1, offset: 1 });
+      expect(page1).toHaveLength(1);
+      expect(page2).toHaveLength(1);
+      expect(page1[0]?.id).not.toBe(page2[0]?.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("computes monotonic positive rank weights for FTS5 bm25 negative scores", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({
+        statement: "Use typescript strict mode for backend services.",
+        category: "compiler",
+      });
+      store.remember({
+        statement: "Backend services require typescript validation.",
+        category: "compiler",
+      });
+
+      const results = store.search({ prompt: "typescript strict mode" });
+      expect(results.length).toBeGreaterThan(0);
+      for (const result of results) {
+        expect(result.score).toBeGreaterThan(0);
+        if (result.reasons.includes("fts")) {
+          expect(result.score).toBeGreaterThan(result.preference.confidence);
+        }
+      }
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

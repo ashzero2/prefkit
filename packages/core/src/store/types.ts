@@ -110,7 +110,10 @@ export interface RememberPreferenceInput {
 export interface ListPreferencesOptions {
   includeInactive?: boolean;
   status?: PreferenceStatus;
+  scope?: ScopeType;
+  scopeValue?: string;
   limit?: number;
+  offset?: number;
 }
 
 export interface PreferenceStore {

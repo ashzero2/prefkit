@@ -28,7 +28,7 @@ import { parsePreferenceExport } from "./transfer.js";
 
 type Row = Record<string, unknown>;
 
-const activeStatuses = new Set<PreferenceStatus>(["candidate", "active", "pinned"]);
+const activeStatuses = new Set<PreferenceStatus>(["active", "pinned"]);
 const preferenceStatuses = ["candidate", "active", "pinned", "suppressed", "superseded", "rejected"] as const;
 const evidenceSourceTypes = ["USER_EXPLICIT", "MODEL_EXTRACTED", "AGENT_EVENT", "IMPORT"] as const;
 const evidencePolarities = ["positive", "negative", "neutral"] as const;
@@ -131,39 +131,54 @@ export class SqlitePreferenceStore implements PreferenceStore {
     this.init();
 
     const limit = boundedLimit(options.limit);
-    const rows =
-      options.status === undefined
-        ? (this.db
-            .prepare(
-              `SELECT * FROM preferences
-               ORDER BY CASE status WHEN 'pinned' THEN 0 WHEN 'active' THEN 1 WHEN 'candidate' THEN 2 ELSE 3 END,
-                        updated_at DESC
-               LIMIT ?`,
-            )
-            .all(limit) as Row[])
-        : (this.db
-            .prepare(
-              `SELECT * FROM preferences
-               WHERE status = ?
-               ORDER BY updated_at DESC
-               LIMIT ?`,
-            )
-            .all(options.status, limit) as Row[]);
+    const offset = Math.max(0, Math.floor(options.offset ?? 0));
+    const conditions: string[] = [];
+    const params: unknown[] = [];
 
-    const preferences = rows.map(rowToPreference);
-    return options.includeInactive === true || options.status !== undefined
-      ? preferences
-      : preferences.filter((pref) => activeStatuses.has(pref.status));
+    if (options.status !== undefined) {
+      conditions.push("status = ?");
+      params.push(options.status);
+    } else if (options.includeInactive !== true) {
+      conditions.push("status IN ('active', 'pinned')");
+    }
+
+    if (options.scope !== undefined) {
+      conditions.push("scope_type = ?");
+      params.push(options.scope);
+    }
+
+    if (options.scopeValue !== undefined) {
+      conditions.push("scope_value = ?");
+      params.push(options.scopeValue);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT * FROM preferences
+      ${whereClause}
+      ORDER BY CASE status WHEN 'pinned' THEN 0 WHEN 'active' THEN 1 WHEN 'candidate' THEN 2 ELSE 3 END,
+               updated_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params.push(limit, offset);
+
+    const rows = this.db.prepare(sql).all(...params) as Row[];
+    return rows.map(rowToPreference);
   }
 
   search(options: PreferenceSearchOptions): PreferenceSearchResult[] {
     this.init();
 
+    const statuses = options.statuses ?? ["active", "pinned"];
+    if (statuses.length === 0) {
+      return [];
+    }
+
     const limit = boundedLimit(options.limit);
     const minConfidence = Math.max(0, Math.min(1, options.minConfidence ?? 0));
     const query = ftsQuery(options.prompt);
-    const ftsRows = query === null ? [] : this.searchFts(query, minConfidence, limit * 3);
-    const candidateRows = ftsRows.length > 0 ? ftsRows : this.searchLexicalCandidates(minConfidence, 500);
+    const ftsRows = query === null ? [] : this.searchFts(query, minConfidence, limit * 3, statuses);
+    const candidateRows = ftsRows.length > 0 ? ftsRows : this.searchLexicalCandidates(minConfidence, 500, statuses);
     const prompt = options.prompt;
 
     return candidateRows
@@ -576,7 +591,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return row === undefined ? 0 : numberField(row, "value");
   }
 
-  private searchFts(query: string, minConfidence: number, limit: number): Row[] {
+  private searchFts(query: string, minConfidence: number, limit: number, statuses: PreferenceStatus[]): Row[] {
+    if (statuses.length === 0) {
+      return [];
+    }
+    const placeholders = statuses.map(() => "?").join(", ");
     try {
       return this.db
         .prepare(
@@ -584,29 +603,33 @@ export class SqlitePreferenceStore implements PreferenceStore {
            FROM preferences_fts
            JOIN preferences p ON preferences_fts.rowid = p.rowid
            WHERE preferences_fts MATCH ?
-             AND p.status IN ('candidate', 'active', 'pinned')
+             AND p.status IN (${placeholders})
              AND p.confidence >= ?
            ORDER BY preferences_fts.rank
            LIMIT ?`,
         )
-        .all(query, minConfidence, limit) as Row[];
+        .all(query, ...statuses, minConfidence, limit) as Row[];
     } catch {
       return [];
     }
   }
 
-  private searchLexicalCandidates(minConfidence: number, limit: number): Row[] {
+  private searchLexicalCandidates(minConfidence: number, limit: number, statuses: PreferenceStatus[]): Row[] {
+    if (statuses.length === 0) {
+      return [];
+    }
+    const placeholders = statuses.map(() => "?").join(", ");
     return this.db
       .prepare(
         `SELECT *
          FROM preferences
-         WHERE status IN ('candidate', 'active', 'pinned')
+         WHERE status IN (${placeholders})
            AND confidence >= ?
          ORDER BY CASE status WHEN 'pinned' THEN 0 WHEN 'active' THEN 1 ELSE 2 END,
                   updated_at DESC
          LIMIT ?`,
       )
-      .all(minConfidence, limit) as Row[];
+      .all(...statuses, minConfidence, limit) as Row[];
   }
 
   private updateStatus(id: string, status: PreferenceStatus): PreferenceRecord | null {
@@ -872,7 +895,8 @@ function scorePreference(
   rank: number | null,
 ): number {
   const statusWeight = preference.status === "pinned" ? 0.5 : preference.status === "active" ? 0.25 : 0.1;
-  const rankWeight = rank === null ? 0 : Math.max(0, 0.25 - Math.min(0.25, Math.abs(rank)));
+  const ftsScore = rank === null ? 0 : Math.max(0, -rank);
+  const rankWeight = rank === null ? 0 : 0.25 * (ftsScore / (1 + ftsScore));
   return preference.confidence + statusWeight + scopeWeight + overlap * 0.15 + rankWeight;
 }
 

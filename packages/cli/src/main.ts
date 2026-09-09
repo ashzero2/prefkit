@@ -290,6 +290,18 @@ async function main(argv: string[]): Promise<number> {
         if (status !== undefined) {
           listOptions.status = status;
         }
+        const scope = optionalScope(flagOne(args, "scope"));
+        if (scope !== undefined) {
+          listOptions.scope = scope;
+        }
+        const scopeValue = flagOne(args, "scope-value");
+        if (scopeValue !== undefined) {
+          listOptions.scopeValue = scopeValue;
+        }
+        const offset = parseNumberFlag(flagOne(args, "offset"), 0);
+        if (offset > 0) {
+          listOptions.offset = offset;
+        }
         const preferences = store.list(listOptions);
         printList(preferences);
         return 0;
@@ -466,6 +478,13 @@ function parseScope(value: string): ScopeType {
     return value;
   }
   throw new Error(`Unsupported scope: ${value}`);
+}
+
+function optionalScope(value: string | undefined): ScopeType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return parseScope(value);
 }
 
 function optionalStatus(value: string | undefined): PreferenceStatus | undefined {
@@ -982,7 +1001,7 @@ function printHelp(): void {
 Usage:
   prefkit init [--config .prefkit.json]
   prefkit remember "Prefer concise status updates" [--category communication] [--tag style]
-  prefkit list [--all] [--status active] [--limit 20]
+  prefkit list [--all] [--status active] [--scope repository] [--scope-value <val>] [--limit 20] [--offset 0]
   prefkit stats
   prefkit why <id>
   prefkit pin <id>
