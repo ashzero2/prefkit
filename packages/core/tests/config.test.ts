@@ -51,4 +51,62 @@ describe("config loading", () => {
     expect(expandHome("~/prefs.db")).toContain("/prefs.db");
     expect(expandHome("/tmp/prefs.db")).toBe("/tmp/prefs.db");
   });
+
+  it("prioritizes explicit config over project config", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-config-"));
+    writeFileSync(
+      join(cwd, ".prefkit.json"),
+      JSON.stringify({
+        injection: { maxTokens: 300 },
+      }),
+    );
+
+    const customPath = join(cwd, "custom-config.json");
+    writeFileSync(
+      customPath,
+      JSON.stringify({
+        injection: { maxTokens: 500 },
+      }),
+    );
+
+    const result = loadConfig({
+      cwd,
+      configPath: customPath,
+      env: {},
+    });
+
+    expect(result.sources).toEqual([join(cwd, ".prefkit.json"), customPath]);
+    expect(result.config.injection.maxTokens).toBe(500);
+  });
+
+  it("validates and sanitizes invalid config types with actionable warnings", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-config-"));
+    writeFileSync(
+      join(cwd, ".prefkit.json"),
+      JSON.stringify({
+        store: { wal: "not-a-boolean" },
+        learning: { workerPollMs: -100 },
+      }),
+    );
+
+    const result = loadConfig({ cwd, env: {} });
+
+    expect(result.warnings.some((w) => w.includes("store.wal"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("learning.workerPollMs"))).toBe(true);
+    // Falls back to safe defaults
+    expect(typeof result.config.store.wal).toBe("boolean");
+    expect(result.config.store.wal).toBe(true);
+    expect(result.config.learning.workerPollMs).toBeGreaterThan(0);
+  });
+
+  it("warns when an explicitly specified config file does not exist", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-config-"));
+    const result = loadConfig({
+      cwd,
+      configPath: join(cwd, "nonexistent.json"),
+      env: {},
+    });
+
+    expect(result.warnings.some((w) => w.includes("Specified config file not found"))).toBe(true);
+  });
 });

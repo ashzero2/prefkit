@@ -1,5 +1,6 @@
 export { defaultConfig } from "./config/defaults.js";
 export { expandHome, loadConfig } from "./config/load.js";
+export { prefKitConfigSchema, validateAndSanitizeConfig } from "./config/schema.js";
 export type {
   ApiModelConfig,
   ConfigLoadResult,

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { defaultConfig } from "./defaults.js";
+import { validateAndSanitizeConfig } from "./schema.js";
 import type { ConfigLoadResult, PrefKitConfig } from "./types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -32,6 +33,14 @@ export function loadConfig(options: LoadConfigOptions = {}): ConfigLoadResult {
 
   let config = cloneConfig(defaultConfig);
 
+  const explicit = options.configPath ?? env.PREFKIT_CONFIG;
+  if (explicit && explicit.trim().length > 0) {
+    const explicitResolved = resolvePath(cwd, explicit);
+    if (!existsSync(explicitResolved)) {
+      warnings.push(`Specified config file not found: ${explicitResolved}`);
+    }
+  }
+
   const candidates = configCandidates(cwd, options.configPath, env);
   for (const candidate of candidates) {
     if (!existsSync(candidate)) {
@@ -54,6 +63,11 @@ export function loadConfig(options: LoadConfigOptions = {}): ConfigLoadResult {
   }
 
   config = applyEnv(config, env);
+
+  const validation = validateAndSanitizeConfig(config);
+  config = validation.config;
+  warnings.push(...validation.warnings);
+
   config.store.path = expandHome(config.store.path);
   config.learning.queuePath = expandHome(config.learning.queuePath);
 
@@ -70,14 +84,15 @@ function configCandidates(
   env: NodeJS.ProcessEnv,
 ): string[] {
   const explicit = explicitPath ?? env.PREFKIT_CONFIG;
-  const candidates: string[] = [];
+  const candidates: string[] = [
+    join(homedir(), ".config", "prefkit", "config.json"),
+    resolve(cwd, ".prefkit.json"),
+  ];
 
   if (explicit && explicit.trim().length > 0) {
     candidates.push(resolvePath(cwd, explicit));
   }
 
-  candidates.push(resolve(cwd, ".prefkit.json"));
-  candidates.push(join(homedir(), ".config", "prefkit", "config.json"));
   return dedupe(candidates);
 }
 
