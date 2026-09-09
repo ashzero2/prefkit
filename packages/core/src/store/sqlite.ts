@@ -23,6 +23,7 @@ import type {
   ScopeType,
   ImportReport,
   PreferenceStats,
+  EvidenceStats,
 } from "./types.js";
 import { parsePreferenceExport } from "./transfer.js";
 
@@ -102,6 +103,43 @@ export class SqlitePreferenceStore implements PreferenceStore {
     const existing = this.findByEvidenceHash(evidence.evidenceHash);
     if (existing !== null) {
       return existing;
+    }
+
+    const duplicate = this.findByStatement(preference.normalizedStatement, preference.scopeType, preference.scopeValue);
+    if (duplicate !== null) {
+      const targetPref = duplicate.preference;
+      const targetEvidence: EvidenceRecord = {
+        ...evidence,
+        preferenceId: targetPref.id,
+        evidenceHash: evidenceHash(targetPref, evidenceSummary),
+      };
+
+      const existingEvidence = this.findByEvidenceHash(targetEvidence.evidenceHash);
+      if (existingEvidence !== null) {
+        return existingEvidence;
+      }
+
+      const newConfidence = clampConfidence(
+        input.confidence !== undefined
+          ? Math.max(targetPref.confidence, input.confidence)
+          : targetPref.confidence,
+      );
+
+      this.db.transaction(() => {
+        this.insertEvidence(targetEvidence);
+        this.db
+          .prepare(
+            `UPDATE preferences
+             SET updated_at = ?,
+                 last_seen_at = ?,
+                 confidence = ?
+             WHERE id = ?`,
+          )
+          .run(now, now, newConfidence, targetPref.id);
+      })();
+
+      const updated = this.get(targetPref.id);
+      return updated ?? { preference: targetPref, evidence: [targetEvidence] };
     }
 
     const write = this.db.transaction(() => {
@@ -216,6 +254,81 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return {
       preference: rowToPreference(row),
       evidence: this.evidenceFor(id),
+    };
+  }
+
+  findByStatement(
+    normalizedStatement: string,
+    scopeType: ScopeType,
+    scopeValue?: string | null,
+  ): PreferenceWithEvidence | null {
+    this.init();
+
+    const normalized = normalizeWhitespace(normalizedStatement).toLowerCase();
+    const row =
+      scopeValue === null || scopeValue === undefined
+        ? (this.db
+            .prepare(
+              `SELECT * FROM preferences
+               WHERE normalized_statement = ?
+                 AND scope_type = ?
+                 AND scope_value IS NULL
+               LIMIT 1`,
+            )
+            .get(normalized, scopeType) as Row | undefined)
+        : (this.db
+            .prepare(
+              `SELECT * FROM preferences
+               WHERE normalized_statement = ?
+                 AND scope_type = ?
+                 AND scope_value = ?
+               LIMIT 1`,
+            )
+            .get(normalized, scopeType, scopeValue) as Row | undefined);
+
+    if (row === undefined) {
+      return null;
+    }
+    const preference = rowToPreference(row);
+    return {
+      preference,
+      evidence: this.evidenceFor(preference.id),
+    };
+  }
+
+  countPositiveEvidence(preferenceId: string): number {
+    this.init();
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM evidence
+         WHERE preference_id = ? AND polarity = 'positive'`,
+      )
+      .get(preferenceId) as Row | undefined;
+    return row === undefined ? 0 : numberField(row, "count");
+  }
+
+  getEvidenceStats(preferenceId: string): EvidenceStats {
+    this.init();
+    const positiveCount = this.countPositiveEvidence(preferenceId);
+    const rows = this.db
+      .prepare("SELECT metadata_json FROM evidence WHERE preference_id = ?")
+      .all(preferenceId) as Row[];
+
+    const cwds = new Set<string>();
+    for (const row of rows) {
+      try {
+        const metadata = JSON.parse(stringField(row, "metadata_json")) as Record<string, unknown>;
+        if (typeof metadata.cwd === "string" && metadata.cwd.length > 0) {
+          cwds.add(metadata.cwd);
+        }
+      } catch {
+        // ignore unparseable metadata
+      }
+    }
+
+    return {
+      positiveCount,
+      distinctCwds: cwds.size,
     };
   }
 

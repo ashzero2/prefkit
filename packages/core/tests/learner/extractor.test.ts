@@ -222,6 +222,56 @@ describe("preference extractor runner", () => {
     expect(result.status).toBe("model_error");
     expect(result.errors).toEqual(["model unavailable"]);
   });
+
+  it("includes candidate existing preferences in the prompt packet and extracts supersession links", async () => {
+    const candidateId = "pref_existing_package_manager";
+    const baseOutput = validModelOutput() as Record<string, unknown>;
+    const model = new MockJsonModel({
+      ...baseOutput,
+      statement: "Always use pnpm instead of npm.",
+      contradictions: [
+        {
+          preferenceId: candidateId,
+          kind: "same_scope",
+          action: "supersede_existing",
+          rationale: "User explicitly superseded npm with pnpm.",
+        },
+      ],
+    });
+
+    const result = await extractPreference(
+      {
+        agent: "claude",
+        eventType: "explicit_correction",
+        userPrompt: "Stop using npm, use pnpm from now on.",
+        assistantSummary: "Suggested npm.",
+      },
+      model,
+      options({
+        existingPreferences: [
+          {
+            id: candidateId,
+            statement: "Prefer npm for packaging.",
+            scopeType: "global",
+            confidence: 0.8,
+          },
+        ],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(model.requests).toHaveLength(1);
+    const userMessage = model.requests[0]?.messages.find((m) => m.role === "user");
+    expect(userMessage?.content).toContain(candidateId);
+    expect(userMessage?.content).toContain("Prefer npm for packaging.");
+    expect(result.extraction.contradictions).toHaveLength(1);
+    expect(result.extraction.contradictions[0]?.preferenceId).toBe(candidateId);
+    expect(result.extraction.contradictions[0]?.action).toBe("supersede_existing");
+  });
 });
 
 class MockJsonModel implements PrefKitJsonModel {

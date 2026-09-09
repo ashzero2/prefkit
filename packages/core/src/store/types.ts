@@ -50,6 +50,11 @@ export interface ImportReport {
   conflicts: number;
 }
 
+export interface EvidenceStats {
+  positiveCount: number;
+  distinctCwds: number;
+}
+
 export interface PreferenceStats {
   preferences: {
     total: number;
@@ -124,6 +129,13 @@ export interface PreferenceStore {
   list(options?: ListPreferencesOptions): PreferenceRecord[];
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
+  findByStatement(
+    normalizedStatement: string,
+    scopeType: ScopeType,
+    scopeValue?: string | null,
+  ): PreferenceWithEvidence | null;
+  countPositiveEvidence(preferenceId: string): number;
+  getEvidenceStats(preferenceId: string): EvidenceStats;
   recordContext(input: ContextMetricInput): void;
   recordCorrection(input: CorrectionMetricInput): boolean;
   stats(): PreferenceStats;

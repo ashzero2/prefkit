@@ -403,6 +403,51 @@ describe("SqlitePreferenceStore", () => {
       store.close();
     }
   });
+
+  it("deduplicates preferences by statement and scope, appending evidence onto the existing record", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const first = store.remember({
+        statement: "Prefer pnpm for monorepos.",
+        category: "tooling",
+        evidence: {
+          summary: "First observation in repo-1.",
+          metadata: { cwd: "/workspace/repo-1" },
+        },
+      });
+
+      const second = store.remember({
+        statement: "  prefer   PNPM for monorepos.  ",
+        category: "tooling",
+        evidence: {
+          summary: "Second observation in repo-2.",
+          metadata: { cwd: "/workspace/repo-2" },
+        },
+      });
+
+      // Same preference ID reused
+      expect(second.preference.id).toBe(first.preference.id);
+
+      // Single preference in store list
+      expect(store.list()).toHaveLength(1);
+
+      // Both evidence records attached
+      const retrieved = store.get(first.preference.id);
+      expect(retrieved?.evidence).toHaveLength(2);
+
+      // Evidence counting and stats
+      expect(store.countPositiveEvidence(first.preference.id)).toBe(2);
+      const stats = store.getEvidenceStats(first.preference.id);
+      expect(stats.positiveCount).toBe(2);
+      expect(stats.distinctCwds).toBe(2);
+
+      // findByStatement finds the record
+      const found = store.findByStatement("prefer pnpm for monorepos.", "global");
+      expect(found?.preference.id).toBe(first.preference.id);
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

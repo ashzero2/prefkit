@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import {
+  calculatePreferenceConfidence,
   createPreferenceStore,
   extractPreference,
   expandHome,
@@ -12,7 +13,9 @@ import {
   renderPreferenceContext,
   runDoctor,
   scoreLearnerEvent,
+  storeExists,
   validateLearnerEvent,
+  type CandidatePreferenceContext,
   type ListPreferencesOptions,
   type PreferenceExtractionResult,
   type PreferenceRecord,
@@ -100,18 +103,22 @@ async function main(argv: string[]): Promise<number> {
       throw new Error("learn requires --event-file path.json.");
     }
 
-    const result = await extractPreference(readJsonFile(eventFile), new OllamaModel(loadResult.config.localModel), {
+    const eventData = readJsonFile(eventFile);
+    const persist = args.flags.has("persist");
+    const store = persist || storeExists(loadResult.config.store) ? createPreferenceStore(loadResult.config.store) : null;
+    const existingPreferences = candidatePreferencesFromStore(store, eventData as Record<string, unknown>);
+
+    const result = await extractPreference(eventData, new OllamaModel(loadResult.config.localModel), {
       learning: loadResult.config.learning,
       privacy: loadResult.config.privacy,
       localModel: loadResult.config.localModel,
+      existingPreferences,
     });
     if (result.event?.eventType === "explicit_correction") {
       recordCorrectionMetric(loadResult.config.metrics.enabled, loadResult.config.store, result.event.sessionId);
     }
-    const persist = args.flags.has("persist");
-    const store = persist ? createPreferenceStore(loadResult.config.store) : null;
     try {
-      const persisted = persistLearnResult(result, store);
+      const persisted = persistLearnResult(result, persist ? store : null);
       printLearnResult(result, {
         persisted: persisted !== null,
         ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
@@ -550,10 +557,13 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
 
   for (const file of files) {
     try {
-      const result = await extractPreference(readJsonFile(file), model, {
+      const eventData = readJsonFile(file);
+      const existingPreferences = candidatePreferencesFromStore(input.store, eventData as Record<string, unknown>);
+      const result = await extractPreference(eventData, model, {
         learning: input.config.learning,
         privacy: input.config.privacy,
         localModel: input.config.localModel,
+        existingPreferences,
       });
       const persisted = persistLearnResult(result, input.persist ? input.store : null);
 
@@ -690,6 +700,38 @@ function recordCorrectionMetric(metricsEnabled: boolean, storeConfig: StoreConfi
   }
 }
 
+function candidatePreferencesFromStore(
+  store: PreferenceStore | null,
+  event: Record<string, unknown>,
+): CandidatePreferenceContext[] {
+  if (store === null) {
+    return [];
+  }
+  const prompt = typeof event.userPrompt === "string" ? event.userPrompt.trim() : "";
+  if (prompt.length === 0) {
+    return [];
+  }
+  try {
+    const searchOptions: PreferenceSearchOptions = {
+      prompt,
+      limit: 5,
+      ...(typeof event.cwd === "string" ? { cwd: event.cwd } : {}),
+      ...(typeof event.agent === "string" ? { agent: event.agent } : {}),
+      ...(typeof event.sessionId === "string" ? { sessionId: event.sessionId } : {}),
+    };
+    const results = store.search(searchOptions);
+    return results.map((result) => ({
+      id: result.preference.id,
+      statement: result.preference.statement,
+      scopeType: result.preference.scopeType,
+      scopeValue: result.preference.scopeValue,
+      confidence: result.preference.confidence,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function learnExitCode(result: PreferenceExtractionResult): number {
   if (result.ok) {
     return 0;
@@ -713,13 +755,34 @@ function persistLearnResult(
     (contradiction) => contradiction.action === "supersede_existing" && store.get(contradiction.preferenceId) !== null,
   );
 
+  const existing = store.findByStatement(
+    result.extraction.statement,
+    result.extraction.scopeType,
+    result.extraction.scopeValue,
+  );
+
+  let confidence = result.confidence;
+  if (existing !== null) {
+    const evidenceStats = store.getEvidenceStats(existing.preference.id);
+    confidence = calculatePreferenceConfidence({
+      event: result.event,
+      extraction: result.extraction,
+      existingPositiveEvidence: evidenceStats.positiveCount,
+      repeatedAcrossRepositories: evidenceStats.distinctCwds > 1 || (result.event.cwd !== undefined && evidenceStats.distinctCwds >= 1),
+      options: {
+        globalPromotionThreshold: 8,
+        requireConfirmationForGlobal: true,
+      },
+    });
+  }
+
   const rememberInput: RememberPreferenceInput = {
     statement: result.extraction.statement,
     scopeType: result.extraction.scopeType,
     category: result.extraction.category,
     tags: result.extraction.tags,
-    confidence: result.confidence.confidence,
-    status: result.confidence.status,
+    confidence: confidence.confidence,
+    status: confidence.status,
     source: "prefkit-learn",
     evidence: {
       sessionId: result.event.sessionId ?? null,
@@ -727,8 +790,9 @@ function persistLearnResult(
       summary: result.extraction.rationale,
       sourceType: result.extraction.evidenceType,
       polarity: result.extraction.polarity,
-      weight: result.confidence.evidenceWeight,
+      weight: confidence.evidenceWeight,
       metadata: {
+        cwd: result.event.cwd ?? null,
         model: result.model,
         eventType: result.event.eventType,
         promptTokenEstimate: result.promptTokenEstimate,
@@ -737,9 +801,9 @@ function persistLearnResult(
       },
     },
     metadata: {
-      needsConfirmation: result.confidence.needsConfirmation,
+      needsConfirmation: confidence.needsConfirmation,
       contradictions: result.extraction.contradictions,
-      confidenceReasons: result.confidence.reasons.map((reason) => reason.code),
+      confidenceReasons: confidence.reasons.map((reason) => reason.code),
       signalReasons: result.prefilter.reasons.map((reason) => reason.code),
     },
     ...(supersedingContradiction === undefined ? {} : { supersedesId: supersedingContradiction.preferenceId }),

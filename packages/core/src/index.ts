@@ -50,6 +50,7 @@ export type {
   ConfidenceReason,
 } from "./learner/confidence.js";
 export type {
+  CandidatePreferenceContext,
   PreferenceExtractionOptions,
   PreferenceExtractionResult,
   PreferenceExtractionSkipped,
@@ -96,6 +97,7 @@ export type {
   PreferenceWithEvidence,
   ImportReport,
   PreferenceStats,
+  EvidenceStats,
   ContextMetricInput,
   CorrectionMetricInput,
   RememberPreferenceInput,
