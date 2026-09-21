@@ -32,7 +32,6 @@ import { parsePreferenceExport } from "./transfer.js";
 
 type Row = Record<string, unknown>;
 
-const activeStatuses = new Set<PreferenceStatus>(["active", "pinned"]);
 const preferenceStatuses = ["candidate", "active", "pinned", "suppressed", "superseded", "rejected"] as const;
 const evidenceSourceTypes = ["USER_EXPLICIT", "MODEL_EXTRACTED", "AGENT_EVENT", "IMPORT"] as const;
 const evidencePolarities = ["positive", "negative", "neutral"] as const;

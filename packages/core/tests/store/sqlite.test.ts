@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { createPreferenceStore, type StoreConfig } from "../../src/index.js";
 
@@ -635,6 +636,21 @@ describe("SqlitePreferenceStore", () => {
       expect(results.map((result) => result.preference.id)).toContain(global.preference.id);
     } finally {
       store.close();
+    }
+  });
+
+  it("drops the unused events table", () => {
+    const config = testStoreConfig();
+    const store = createPreferenceStore(config);
+    store.init();
+    store.close();
+
+    const db = new Database(config.path, { readonly: true });
+    try {
+      const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'events'").get();
+      expect(row).toBeUndefined();
+    } finally {
+      db.close();
     }
   });
 });

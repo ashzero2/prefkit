@@ -131,4 +131,11 @@ export const migrations: Migration[] = [
         ON evaluation_sessions(status, context_injected);
     `,
   },
+  {
+    id: 5,
+    name: "drop-unused-events-table",
+    sql: `
+      DROP TABLE IF EXISTS events;
+    `,
+  },
 ];
