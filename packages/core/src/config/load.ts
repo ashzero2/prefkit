@@ -30,39 +30,27 @@ export function loadConfig(options: LoadConfigOptions = {}): ConfigLoadResult {
   const env = options.env ?? process.env;
   const warnings: string[] = [];
   const sources: string[] = [];
+  const applied = new Set<string>();
 
   let config = cloneConfig(defaultConfig);
 
-  const explicit = options.configPath ?? env.PREFKIT_CONFIG;
-  if (explicit && explicit.trim().length > 0) {
-    const explicitResolved = resolvePath(cwd, explicit);
-    if (!existsSync(explicitResolved)) {
-      warnings.push(`Specified config file not found: ${explicitResolved}`);
-    }
-  }
+  const explicitValue = options.configPath ?? env.PREFKIT_CONFIG;
+  const explicitPath =
+    explicitValue !== undefined && explicitValue.trim().length > 0 ? resolvePath(cwd, explicitValue) : null;
 
-  const candidates = configCandidates(cwd, options.configPath, env);
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(readFileSync(candidate, "utf8")) as unknown;
-      if (!isJsonObject(parsed)) {
-        warnings.push(`Ignored ${candidate}: expected a JSON object.`);
-        continue;
-      }
-
-      config = mergeConfig(config, parsed);
-      sources.push(candidate);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      warnings.push(`Ignored ${candidate}: ${message}`);
-    }
+  for (const candidate of [join(homedir(), ".config", "prefkit", "config.json"), resolve(cwd, ".prefkit.json")]) {
+    config = applyConfigFile(config, candidate, warnings, sources, applied);
   }
 
   config = applyEnv(config, env);
+
+  if (explicitPath !== null) {
+    if (existsSync(explicitPath)) {
+      config = applyConfigFile(config, explicitPath, warnings, sources, applied);
+    } else {
+      warnings.push(`Specified config file not found: ${explicitPath}`);
+    }
+  }
 
   const validation = validateAndSanitizeConfig(config);
   config = validation.config;
@@ -78,22 +66,32 @@ export function loadConfig(options: LoadConfigOptions = {}): ConfigLoadResult {
   };
 }
 
-function configCandidates(
-  cwd: string,
-  explicitPath: string | undefined,
-  env: NodeJS.ProcessEnv,
-): string[] {
-  const explicit = explicitPath ?? env.PREFKIT_CONFIG;
-  const candidates: string[] = [
-    join(homedir(), ".config", "prefkit", "config.json"),
-    resolve(cwd, ".prefkit.json"),
-  ];
-
-  if (explicit && explicit.trim().length > 0) {
-    candidates.push(resolvePath(cwd, explicit));
+function applyConfigFile(
+  config: PrefKitConfig,
+  path: string,
+  warnings: string[],
+  sources: string[],
+  applied: Set<string>,
+): PrefKitConfig {
+  if (!existsSync(path) || applied.has(path)) {
+    return config;
   }
+  applied.add(path);
 
-  return dedupe(candidates);
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!isJsonObject(parsed)) {
+      warnings.push(`Ignored ${path}: expected a JSON object.`);
+      return config;
+    }
+
+    sources.push(path);
+    return mergeConfig(config, parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`Ignored ${path}: ${message}`);
+    return config;
+  }
 }
 
 function resolvePath(cwd: string, value: string): string {
@@ -152,12 +150,6 @@ function applyEnv(config: PrefKitConfig, env: NodeJS.ProcessEnv): PrefKitConfig 
   if (env.PREFKIT_METRICS_ENABLED) {
     next.metrics.enabled = parseBoolean(env.PREFKIT_METRICS_ENABLED, next.metrics.enabled);
   }
-  if (env.PREFKIT_API_BASE_URL) {
-    next.apiModel.baseUrl = env.PREFKIT_API_BASE_URL;
-  }
-  if (env.PREFKIT_API_MODEL) {
-    next.apiModel.model = env.PREFKIT_API_MODEL;
-  }
 
   return next;
 }
@@ -175,10 +167,6 @@ function mergeConfig(base: PrefKitConfig, patch: JsonObject): PrefKitConfig {
     localModel: {
       ...base.localModel,
       ...objectPatch(patch.localModel),
-    },
-    apiModel: {
-      ...base.apiModel,
-      ...objectPatch(patch.apiModel),
     },
     privacy: {
       ...base.privacy,
@@ -207,7 +195,7 @@ function parseLearningMode(
   value: string,
   fallback: PrefKitConfig["learning"]["mode"],
 ): PrefKitConfig["learning"]["mode"] {
-  if (value === "local" || value === "api" || value === "off" || value === "manual") {
+  if (value === "local" || value === "off" || value === "manual") {
     return value;
   }
 
@@ -255,8 +243,4 @@ function parseBoolean(value: string, fallback: boolean): boolean {
 
 function cloneConfig(config: PrefKitConfig): PrefKitConfig {
   return structuredClone(config);
-}
-
-function dedupe(values: string[]): string[] {
-  return Array.from(new Set(values));
 }

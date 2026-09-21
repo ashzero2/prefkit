@@ -109,4 +109,17 @@ describe("config loading", () => {
 
     expect(result.warnings.some((w) => w.includes("Specified config file not found"))).toBe(true);
   });
+
+  it("applies config in explicit > env > project order", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-config-"));
+    writeFileSync(join(cwd, ".prefkit.json"), JSON.stringify({ learning: { mode: "off" } }));
+    const customPath = join(cwd, "custom.json");
+    writeFileSync(customPath, JSON.stringify({ learning: { mode: "manual" } }));
+
+    const envResult = loadConfig({ cwd, env: { PREFKIT_LEARNER: "local" } });
+    expect(envResult.config.learning.mode).toBe("local");
+
+    const explicitResult = loadConfig({ cwd, configPath: customPath, env: { PREFKIT_LEARNER: "local" } });
+    expect(explicitResult.config.learning.mode).toBe("manual");
+  });
 });

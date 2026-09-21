@@ -10,7 +10,7 @@ export const storeConfigSchema = z.object({
 
 export const learningConfigSchema = z.object({
   enabled: z.boolean(),
-  mode: z.enum(["local", "api", "off", "manual"]),
+  mode: z.enum(["local", "off", "manual"]),
   minSignalScore: z.number().int().nonnegative(),
   globalPromotionThreshold: z.number().int().positive(),
   requireConfirmationForGlobal: z.boolean(),
@@ -21,7 +21,7 @@ export const learningConfigSchema = z.object({
 });
 
 export const localModelConfigSchema = z.object({
-  provider: z.enum(["ollama", "openai-compatible", "mock"]),
+  provider: z.enum(["ollama"]),
   baseUrl: z.string().trim().min(1),
   model: z.string().trim().min(1),
   temperature: z.number().min(0).max(2),
@@ -31,19 +31,9 @@ export const localModelConfigSchema = z.object({
   think: z.enum(["omit", "false", "true", "low", "medium", "high", "max"]),
 });
 
-export const apiModelConfigSchema = z.object({
-  enabled: z.boolean(),
-  provider: z.enum(["openai-compatible"]),
-  baseUrl: z.string().trim(),
-  apiKeyEnv: z.string().trim(),
-  model: z.string().trim(),
-});
-
 export const privacyConfigSchema = z.object({
   redactSecrets: z.boolean(),
-  redactFileContents: z.enum(["never", "large", "always"]),
   maxEvidenceChars: z.number().int().positive(),
-  allowRemoteLearning: z.boolean(),
 });
 
 export const injectionConfigSchema = z.object({
@@ -51,7 +41,6 @@ export const injectionConfigSchema = z.object({
   maxTokens: z.number().int().positive(),
   includeWhy: z.boolean(),
   minConfidence: z.number().min(0).max(1),
-  failOpen: z.boolean(),
 });
 
 export const metricsConfigSchema = z.object({
@@ -62,7 +51,6 @@ export const prefKitConfigSchema = z.object({
   store: storeConfigSchema,
   learning: learningConfigSchema,
   localModel: localModelConfigSchema,
-  apiModel: apiModelConfigSchema,
   privacy: privacyConfigSchema,
   injection: injectionConfigSchema,
   metrics: metricsConfigSchema,
@@ -96,7 +84,6 @@ export function validateAndSanitizeConfig(input: unknown): ConfigValidationResul
     "store",
     "learning",
     "localModel",
-    "apiModel",
     "privacy",
     "injection",
     "metrics",

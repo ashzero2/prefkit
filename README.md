@@ -108,13 +108,12 @@ pnpm prefkit init
 
 ## Configuration
 
-PrefKit loads configuration from:
+PrefKit loads configuration in precedence order, highest first:
 
-1. `--config path`
-2. `PREFKIT_CONFIG`
+1. `--config path` (or `PREFKIT_CONFIG`)
+2. environment variables
 3. `.prefkit.json` in the current directory
 4. `~/.config/prefkit/config.json`
-5. environment variables
 
 Useful environment variables:
 

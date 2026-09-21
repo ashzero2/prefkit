@@ -27,25 +27,15 @@ export const defaultConfig: PrefKitConfig = {
     maxOutputTokens: 700,
     think: "omit",
   },
-  apiModel: {
-    enabled: false,
-    provider: "openai-compatible",
-    baseUrl: "",
-    apiKeyEnv: "PREFKIT_API_KEY",
-    model: "",
-  },
   privacy: {
     redactSecrets: true,
-    redactFileContents: "large",
     maxEvidenceChars: 6000,
-    allowRemoteLearning: false,
   },
   injection: {
     maxRules: 8,
     maxTokens: 700,
     includeWhy: false,
     minConfidence: 0.45,
-    failOpen: true,
   },
   metrics: {
     enabled: false,
