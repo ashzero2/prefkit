@@ -21,8 +21,11 @@ interface ClassificationCase {
 const cases: ClassificationCase[] = [
   { prompt: "Remember that I prefer pnpm.", queue: true, eventType: "explicit_memory" },
   { prompt: "No, use pnpm instead.", queue: true, eventType: "explicit_correction" },
-  { prompt: "no", queue: true, eventType: "explicit_correction" },
-  { prompt: "I never knew that.", queue: true, eventType: "user_prompt" },
+  { prompt: "Always use pnpm.", queue: true, eventType: "user_prompt" },
+  { prompt: "No worries, take your time.", queue: false, eventType: "user_prompt" },
+  { prompt: "I never knew that.", queue: false, eventType: "user_prompt" },
+  { prompt: "always run the tests this once", queue: false, eventType: "user_prompt" },
+  { prompt: "no", queue: false, eventType: "user_prompt" },
   { prompt: "What is the project status?", queue: false, eventType: "user_prompt" },
   { prompt: "Please refactor this function.", queue: false, eventType: "user_prompt" },
 ];

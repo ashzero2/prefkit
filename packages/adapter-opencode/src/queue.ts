@@ -18,11 +18,24 @@ export type OpenCodeLearnerEventType =
   | "repeated_choice"
   | "manual_replay";
 
+const preferencePattern =
+  /\b(?:remember|save this|store this|note that|i prefer|i like|i usually|i generally|my preference|from now on|going forward|in future|next time|i(?:'|’)d rather|i would rather|i told you|as i said|like i said|why did you)\b/i;
+const instructionVerbs =
+  "use|prefer|do|write|add|include|avoid|format|name|test|run|commit|install|import|sort|order|keep|set|call|return|document|answer|respond|give|provide|show|explain|summarize|produce|list|pick|choose|start|stop|skip|follow|mention";
+const absolutePattern = new RegExp(`\\b(?:always|never)\\s+(?:${instructionVerbs})\\b`, "i");
+const correctionPattern = new RegExp(
+  `(?:^|\\b)(?:no[,.!\\s]+(?:use|do|don'?t|please|that|i meant|we should|not that)|not that\\b|instead\\b|rather than\\b|use .{1,50} instead\\b|don'?t\\s+(?:${instructionVerbs})\\b|do not\\s+(?:${instructionVerbs})\\b|stop doing\\b)`,
+  "i",
+);
+const hedgedPattern = /\b(?:this once|just this once|only this time|just for now|for now|today only)\b/i;
+
 export function learnerEventFromOpenCodeContext(input: {
   event: OpenCodeContextEvent;
   cwd: string;
   prompt: string;
   maxPromptChars: number;
+  assistantSummary?: string;
+  queuedAtHook?: string;
 }): OpenCodeLearnerEvent {
   return {
     agent: input.event.agent ?? "opencode",
@@ -30,11 +43,11 @@ export function learnerEventFromOpenCodeContext(input: {
     ...(input.event.sessionID === undefined ? {} : { sessionId: input.event.sessionID }),
     eventType: classifyEventType(input.prompt),
     userPrompt: truncatePrompt(input.prompt, input.maxPromptChars),
-    assistantSummary: "OpenCode captured this user prompt before model dispatch.",
+    assistantSummary: (input.assistantSummary ?? "").trim(),
     repoContext: {},
     metadata: {
       source: "opencode-chat-message-hook",
-      queuedAtHook: "chat.message",
+      queuedAtHook: input.queuedAtHook ?? "chat.message",
     },
   };
 }
@@ -48,9 +61,11 @@ export function shouldQueueOpenCodeLearnerEvent(prompt: string, options: OpenCod
     return prompt.trim().length > 0;
   }
 
-  return /\b(?:remember|save this|store this|note that|i prefer|i like|i usually|i generally|my preference|from now on|going forward|in future|next time|always|never|i(?:'|’)d rather|i would rather|i told you|as i said|like i said|why did you)\b/i.test(
-    prompt,
-  ) || /(?:^|\b)(?:no(?:[,\.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(prompt);
+  if (hedgedPattern.test(prompt)) {
+    return false;
+  }
+
+  return preferencePattern.test(prompt) || absolutePattern.test(prompt) || correctionPattern.test(prompt);
 }
 
 export function extractLatestUserPrompt(event: OpenCodeContextEvent): string {
@@ -72,11 +87,7 @@ function classifyEventType(prompt: string): OpenCodeLearnerEventType {
   if (/\b(?:remember|save this|store this|note that)\b/i.test(prompt)) {
     return "explicit_memory";
   }
-  if (
-    /(?:^|\b)(?:no(?:[,.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(
-      prompt,
-    )
-  ) {
+  if (correctionPattern.test(prompt)) {
     return "explicit_correction";
   }
   return "user_prompt";

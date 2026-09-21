@@ -7,6 +7,8 @@ PrefKit's OpenCode adapter targets **both** the V1 and V2 plugin APIs from one e
 
 V2 is a breaking plugin API change: V1 hook objects are not invoked in V2, so the adapter default-exports one object that implements both. V2 reads `id` and `setup()`; V1 reads `server()`.
 
+On OpenCode 2.x the `context` hook also sees the conversation, so the adapter records the previous assistant message as `assistantSummary` for the next learner event. That makes a correction read as "the user said X after the assistant did Y". On the V1 path (and on Claude Code / Codex) events carry an empty `assistantSummary`.
+
 V2 also differs in configuration:
 
 - The plugin key is `plugins` (plural), not `plugin`.

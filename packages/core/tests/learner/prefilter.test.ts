@@ -11,6 +11,25 @@ describe("learner prefilter", () => {
     expect(decision.reasons).toEqual([]);
   });
 
+  it("does not extract prompt-only false positives", () => {
+    for (const prompt of [
+      "No worries, take your time.",
+      "I never knew that.",
+      "always run the tests this once",
+      "no",
+      "Fine, thanks.",
+    ]) {
+      expect(scoreLearnerEvent(event({ userPrompt: prompt })).shouldExtract, prompt).toBe(false);
+    }
+  });
+
+  it("extracts framed absolute guidance but not bare absolutes", () => {
+    expect(scoreLearnerEvent(event({ userPrompt: "Always use pnpm." })).shouldExtract).toBe(true);
+    expect(scoreLearnerEvent(event({ userPrompt: "Never commit to main." })).shouldExtract).toBe(true);
+    expect(scoreLearnerEvent(event({ userPrompt: "I never knew that." })).shouldExtract).toBe(false);
+    expect(scoreLearnerEvent(event({ userPrompt: "always run the tests this once" })).shouldExtract).toBe(false);
+  });
+
   it("extracts direct correction events at the default threshold", () => {
     const decision = scoreLearnerEvent(
       event({

@@ -56,6 +56,18 @@ Adapters can add mechanical signals in `metadata`:
 
 These are treated as signals for extraction. They should only be set from user-originated behavior, not from agent output alone.
 
+## Signal gating
+
+The deterministic gate decides whether an event is worth a model call. It is deliberately narrow:
+
+- `remember` / `save this` / `store this` / `note that` are strong signals.
+- Stable preference wording ("I prefer", "I usually", "from now on") is a strong signal.
+- `always` / `never` only count when paired with an instruction ("always use …", "never commit …"). Bare absolute wording is a weak booster and cannot pass the gate alone.
+- A correction needs an object or redirect ("no, use X instead", "don't run tests", "not that"). Bare "no" is not a signal, so "No worries" and "Fine, thanks" do not queue.
+- One-off phrasing ("this once", "just for now", "today only") cancels the signal, because it is not durable guidance.
+
+`assistantSummary` is only populated by hosts that expose the assistant turn. The OpenCode 2 plugin captures the previous assistant message; the Claude Code and Codex hooks see the user prompt only, so their events carry an empty `assistantSummary` and their corrections are detected from the user's wording alone.
+
 ## Commands
 
 Dry-run:

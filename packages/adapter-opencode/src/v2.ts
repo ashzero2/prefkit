@@ -33,6 +33,7 @@ export function openCodeV2Plugin(): OpenCodeV2PluginDefinition {
       const options = adapterOptions(ctx.options);
       const cwd = ctx.location?.directory ?? ctx.location?.worktree ?? process.cwd();
       const prompts = new Map<string, string>();
+      const assistantSummaries = new Map<string, string>();
       const injected = new Set<string>();
       debug("setup", { cwd, options });
 
@@ -46,11 +47,14 @@ export function openCodeV2Plugin(): OpenCodeV2PluginDefinition {
         if (options.injectContext !== false && sessionID !== undefined) {
           prompts.set(sessionID, prompt);
         }
+        const assistantSummary = sessionID === undefined ? undefined : assistantSummaries.get(sessionID);
         try {
           const queued = await queueOpenCodeLearnerEventViaCli({
             event: { ...(sessionID === undefined ? {} : { sessionID }), messages: [{ role: "user", content: prompt }] },
             cwd,
             options,
+            ...(assistantSummary === undefined || assistantSummary.length === 0 ? {} : { assistantSummary }),
+            queuedAtHook: "session.prompt",
           });
           if (queued) {
             ensureOpenCodeWorkerViaCli({ cwd, options });
@@ -63,10 +67,14 @@ export function openCodeV2Plugin(): OpenCodeV2PluginDefinition {
 
       await ctx.session.hook("context", async (event) => {
         debug("context-hook", { sessionID: event.sessionID, hasSystem: Array.isArray(event.system), hasMessages: Array.isArray(event.messages) });
+        const sessionID = typeof event.sessionID === "string" ? event.sessionID : undefined;
+        const assistant = latestAssistantText(event.messages);
+        if (sessionID !== undefined && assistant !== undefined) {
+          assistantSummaries.set(sessionID, assistant);
+        }
         if (options.enabled === false || options.injectContext === false) {
           return;
         }
-        const sessionID = typeof event.sessionID === "string" ? event.sessionID : undefined;
         if (sessionID !== undefined && injected.has(sessionID)) {
           return;
         }
@@ -100,6 +108,7 @@ export function openCodeV2Plugin(): OpenCodeV2PluginDefinition {
 
       return () => {
         prompts.clear();
+        assistantSummaries.clear();
         injected.clear();
       };
     },
@@ -118,6 +127,29 @@ function appendSystemContext(system: OpenCodeV2SystemPart[] | undefined, context
   }
 
   system.push({ type: "text", text: context });
+}
+
+function latestAssistantText(messages: unknown[] | undefined): string | undefined {
+  if (!Array.isArray(messages)) {
+    return undefined;
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isRecord(message)) {
+      continue;
+    }
+    const role = message.role ?? (isRecord(message.info) ? message.info.role : undefined);
+    if (role !== "assistant") {
+      continue;
+    }
+    const text = textFromUnknown(message).trim();
+    if (text.length > 0) {
+      return text.length > 400 ? `${text.slice(0, 400)}[TRUNCATED]` : text;
+    }
+  }
+
+  return undefined;
 }
 
 function latestUserText(messages: unknown[] | undefined): string | undefined {

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -73,5 +73,29 @@ describe("OpenCode V2 plugin", () => {
     const second = [{ type: "text", text: "base instructions" }];
     await hooks.get("context")?.({ sessionID: "session_1", system: second, messages: [] });
     expect(second[0]?.text).toBe("base instructions");
+  });
+
+  it("attaches the previous assistant turn as the correction summary", async () => {
+    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-opencode-v2-"));
+    const { ctx, hooks } = fakeContext({ enabled: true, injectContext: false, queueDir, ...testCliOptions() });
+    await openCodeV2Plugin().setup(ctx);
+
+    await hooks.get("context")?.({
+      sessionID: "session_1",
+      system: [],
+      messages: [
+        { role: "user", content: "How should I install deps?" },
+        { role: "assistant", content: "Run npm install." },
+      ],
+    });
+    await hooks.get("prompt")?.({
+      sessionID: "session_1",
+      prompt: { text: "Remember that I prefer pnpm." },
+    });
+
+    const files = readdirSync(queueDir).filter((entry) => entry.endsWith(".json"));
+    expect(files).toHaveLength(1);
+    const event = JSON.parse(readFileSync(join(queueDir, files[0] ?? ""), "utf8")) as { assistantSummary: string };
+    expect(event.assistantSummary).toBe("Run npm install.");
   });
 });
