@@ -12,6 +12,8 @@
     "src/index.ts",
     "src/bridge.ts",
     "src/queue.ts",
-    "src/types.ts"
+    "src/types.ts",
+    "src/shared.ts",
+    "src/v2.ts"
   ]
 }

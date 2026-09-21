@@ -1,7 +1,7 @@
 {
   "name": "@prefkit/opencode",
-  "version": "0.1.1",
-  "description": "Bun-safe OpenCode plugin for PrefKit preference context and learner event capture.",
+  "version": "0.2.0",
+  "description": "OpenCode plugin (V1 and V2 APIs) for PrefKit preference context and learner event capture.",
   "type": "module",
   "main": "./dist/index.js",
   "files": [

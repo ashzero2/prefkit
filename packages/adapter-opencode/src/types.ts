@@ -91,6 +91,50 @@ export interface OpenCodePluginModule {
     input: OpenCodeServerPluginInput,
     options?: Record<string, unknown>,
   ) => Promise<OpenCodeHooks> | OpenCodeHooks;
+  setup?: (ctx: OpenCodeV2PluginContext) => Promise<() => void>;
+}
+
+export interface OpenCodeV2SystemPart {
+  type?: string;
+  text?: string;
+}
+
+export interface OpenCodeV2ContextEvent {
+  sessionID?: string;
+  system?: OpenCodeV2SystemPart[];
+  messages?: unknown[];
+}
+
+export interface OpenCodeV2PromptEvent {
+  sessionID?: string;
+  prompt?: { text?: string };
+}
+
+export interface OpenCodeV2HookRegistration {
+  dispose?: () => unknown;
+}
+
+export interface OpenCodeV2SessionHooks {
+  hook(
+    name: "prompt",
+    callback: (event: OpenCodeV2PromptEvent) => Promise<void> | void,
+  ): Promise<OpenCodeV2HookRegistration>;
+  hook(
+    name: "context",
+    callback: (event: OpenCodeV2ContextEvent) => Promise<void> | void,
+    options?: { providerID?: string },
+  ): Promise<OpenCodeV2HookRegistration>;
+}
+
+export interface OpenCodeV2PluginContext {
+  options?: Record<string, unknown>;
+  location?: { directory?: string; worktree?: string };
+  session: OpenCodeV2SessionHooks;
+}
+
+export interface OpenCodeV2PluginDefinition {
+  id: string;
+  setup(ctx: OpenCodeV2PluginContext): Promise<() => void>;
 }
 
 export interface OpenCodeContextEvent {
