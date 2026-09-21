@@ -42,14 +42,7 @@ import { runStdioServer } from "@prefkit/mcp";
 import { archiveReplayFile, queueFiles, recordQueueFailure, writeQueueFile } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
 import { learnExitCode, persistLearnResult } from "./learn.js";
-
-interface ParsedArgs {
-  command: string | undefined;
-  positionals: string[];
-  flags: Map<string, string[]>;
-  configPath: string | undefined;
-  help: boolean;
-}
+import { parseArgs, type ParsedArgs } from "./args.js";
 
 interface ReplayInput {
   queueDir: string;
@@ -248,6 +241,10 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
+  if (args.command === "context") {
+    return runContextCommand(args, loadResult);
+  }
+
   const store = createPreferenceStore(loadResult.config.store);
   try {
     switch (args.command) {
@@ -412,47 +409,6 @@ async function main(argv: string[]): Promise<number> {
         );
         return report.conflicts === 0 ? 0 : 1;
       }
-      case "context": {
-        const prompt = flagOne(args, "prompt") ?? args.positionals.join(" ");
-        const trimmedPrompt = prompt.trim();
-        if (trimmedPrompt.length === 0) {
-          throw new Error("context requires --prompt or prompt text.");
-        }
-        const searchOptions: PreferenceSearchOptions = {
-          prompt: trimmedPrompt,
-          cwd: flagOne(args, "cwd") ?? process.cwd(),
-          limit: parseNumberFlag(flagOne(args, "limit"), loadResult.config.injection.maxRules),
-          minConfidence: parseNumberFlag(flagOne(args, "min-confidence"), loadResult.config.injection.minConfidence),
-        };
-        const searchPath = flagOne(args, "path");
-        if (searchPath !== undefined) {
-          searchOptions.path = searchPath;
-        }
-        const searchAgent = flagOne(args, "agent");
-        if (searchAgent !== undefined) {
-          searchOptions.agent = searchAgent;
-        }
-        const searchSession = flagOne(args, "session");
-        if (searchSession !== undefined) {
-          searchOptions.sessionId = searchSession;
-        }
-        const results = store.search(searchOptions);
-        const rendered = renderPreferenceContext(results, {
-          injection: loadResult.config.injection,
-          includeWhy: args.flags.has("why"),
-        });
-        if (loadResult.config.metrics.enabled) {
-          store.recordContext({
-            matchedRules: results.length,
-            injectedRules: rendered.included.length,
-            tokenEstimate: rendered.tokenEstimate,
-            injectedPreferenceIds: rendered.included.map((result) => result.preference.id),
-            ...(searchSession === undefined ? {} : { sessionId: searchSession }),
-          });
-        }
-        process.stdout.write(rendered.text);
-        return 0;
-      }
       default:
         console.error(`Unknown command: ${args.command}`);
         printHelp();
@@ -463,48 +419,56 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
-  let command: string | undefined;
-  let configPath: string | undefined;
-  let help = false;
-  const positionals: string[] = [];
-  const flagsByName = new Map<string, string[]>();
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) {
-      continue;
-    }
-
-    if (arg === "--help" || arg === "-h") {
-      help = true;
-      continue;
-    }
-
-    if (arg.startsWith("--")) {
-      const name = arg.slice(2);
-      const next = argv[index + 1];
-      const takesValue = next !== undefined && !next.startsWith("--");
-      const value = takesValue ? next : "true";
-      if (takesValue) {
-        index += 1;
-      }
-      if (name === "config") {
-        configPath = value;
-      } else {
-        flagsByName.set(name, [...(flagsByName.get(name) ?? []), value]);
-      }
-      continue;
-    }
-
-    if (command === undefined) {
-      command = arg;
-    } else {
-      positionals.push(arg);
-    }
+function runContextCommand(args: ParsedArgs, loadResult: ReturnType<typeof loadConfig>): number {
+  const prompt = (flagOne(args, "prompt") ?? args.positionals.join(" ")).trim();
+  if (prompt.length === 0) {
+    throw new Error("context requires --prompt or prompt text.");
   }
 
-  return { command, positionals, flags: flagsByName, configPath, help };
+  if (!storeExists(loadResult.config.store)) {
+    return 0;
+  }
+
+  const store = createPreferenceStore(loadResult.config.store);
+  try {
+    const searchOptions: PreferenceSearchOptions = {
+      prompt,
+      cwd: flagOne(args, "cwd") ?? process.cwd(),
+      limit: parseNumberFlag(flagOne(args, "limit"), loadResult.config.injection.maxRules),
+      minConfidence: parseNumberFlag(flagOne(args, "min-confidence"), loadResult.config.injection.minConfidence),
+    };
+    const searchPath = flagOne(args, "path");
+    if (searchPath !== undefined) {
+      searchOptions.path = searchPath;
+    }
+    const searchAgent = flagOne(args, "agent");
+    if (searchAgent !== undefined) {
+      searchOptions.agent = searchAgent;
+    }
+    const searchSession = flagOne(args, "session");
+    if (searchSession !== undefined) {
+      searchOptions.sessionId = searchSession;
+    }
+
+    const results = store.search(searchOptions);
+    const rendered = renderPreferenceContext(results, {
+      injection: loadResult.config.injection,
+      includeWhy: args.flags.has("why"),
+    });
+    if (loadResult.config.metrics.enabled) {
+      store.recordContext({
+        matchedRules: results.length,
+        injectedRules: rendered.included.length,
+        tokenEstimate: rendered.tokenEstimate,
+        injectedPreferenceIds: rendered.included.map((result) => result.preference.id),
+        ...(searchSession === undefined ? {} : { sessionId: searchSession }),
+      });
+    }
+    process.stdout.write(rendered.text);
+    return 0;
+  } finally {
+    store.close();
+  }
 }
 
 function flags(args: ParsedArgs, name: string): string[] {
