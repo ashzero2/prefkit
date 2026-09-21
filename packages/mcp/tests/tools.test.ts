@@ -131,4 +131,32 @@ describe("MCP preference tools", () => {
       store.close();
     }
   });
+
+  it("searches across scopes and reports SQL-filtered list totals", () => {
+    const store = freshStore();
+    try {
+      store.remember({
+        statement: "Prefer colocated tests in project A.",
+        scopeType: "repository",
+        scopeValue: "/workspace/project-a",
+        category: "testing",
+      });
+      store.remember({
+        statement: "Prefer colocated tests anywhere.",
+        scopeType: "global",
+        category: "testing",
+      });
+
+      const search = searchPreferences(store, { query: "colocated tests" });
+      const texts = (search.structuredContent as { rules: { text: string }[] }).rules.map((rule) => rule.text);
+      expect(texts.some((text) => text.includes("project A"))).toBe(true);
+
+      const listed = listPreferences(store, { scope: "repository", scopeValue: "/workspace/project-a" });
+      const output = listed.structuredContent as { rules: unknown[]; total: number };
+      expect(output.total).toBe(1);
+      expect(output.rules).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
 });

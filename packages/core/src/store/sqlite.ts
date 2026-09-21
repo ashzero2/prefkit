@@ -179,27 +179,7 @@ export class SqlitePreferenceStore implements PreferenceStore {
 
     const limit = boundedLimit(options.limit);
     const offset = Math.max(0, Math.floor(options.offset ?? 0));
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (options.status !== undefined) {
-      conditions.push("status = ?");
-      params.push(options.status);
-    } else if (options.includeInactive !== true) {
-      conditions.push("status IN ('active', 'pinned')");
-    }
-
-    if (options.scope !== undefined) {
-      conditions.push("scope_type = ?");
-      params.push(options.scope);
-    }
-
-    if (options.scopeValue !== undefined) {
-      conditions.push("scope_value = ?");
-      params.push(options.scopeValue);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const { whereClause, params } = this.listConditions(options);
     const sql = `
       SELECT * FROM preferences
       ${whereClause}
@@ -207,10 +187,19 @@ export class SqlitePreferenceStore implements PreferenceStore {
                updated_at DESC
       LIMIT ? OFFSET ?
     `;
-    params.push(limit, offset);
 
-    const rows = this.db.prepare(sql).all(...params) as Row[];
+    const rows = this.db.prepare(sql).all(...params, limit, offset) as Row[];
     return rows.map(rowToPreference);
+  }
+
+  count(options: ListPreferencesOptions = {}): number {
+    this.init();
+
+    const { whereClause, params } = this.listConditions(options);
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS count FROM preferences ${whereClause}`)
+      .get(...params) as Row | undefined;
+    return row === undefined ? 0 : numberField(row, "count");
   }
 
   search(options: PreferenceSearchOptions): PreferenceSearchResult[] {
@@ -225,10 +214,26 @@ export class SqlitePreferenceStore implements PreferenceStore {
     const minConfidence = Math.max(0, Math.min(1, options.minConfidence ?? 0));
     const query = ftsQuery(options.prompt);
     const ftsRows = query === null ? [] : this.searchFts(query, minConfidence, limit * 3, statuses);
-    const candidateRows = ftsRows.length > 0 ? ftsRows : this.searchLexicalCandidates(minConfidence, 500, statuses);
+
+    if (ftsRows.length > 0) {
+      const ranked = this.rankCandidates(ftsRows, options, false, limit);
+      if (ranked.length > 0) {
+        return ranked;
+      }
+    }
+
+    return this.rankCandidates(this.searchLexicalCandidates(minConfidence, 500, statuses), options, true, limit);
+  }
+
+  private rankCandidates(
+    rows: Row[],
+    options: PreferenceSearchOptions,
+    requireOverlap: boolean,
+    limit: number,
+  ): PreferenceSearchResult[] {
     const prompt = options.prompt;
 
-    return candidateRows
+    return rows
       .map((row) => {
         const preference = rowToPreference(row);
         const scope = scopeMatch(preference, options);
@@ -237,7 +242,7 @@ export class SqlitePreferenceStore implements PreferenceStore {
         }
 
         const overlap = lexicalOverlap(prompt, searchableText(preference));
-        if (ftsRows.length === 0 && overlap === 0) {
+        if (requireOverlap && overlap === 0) {
           return null;
         }
 
@@ -861,6 +866,30 @@ export class SqlitePreferenceStore implements PreferenceStore {
     return row === undefined ? 0 : numberField(row, "value");
   }
 
+  private listConditions(options: ListPreferencesOptions): { whereClause: string; params: unknown[] } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (options.status !== undefined) {
+      conditions.push("status = ?");
+      params.push(options.status);
+    } else if (options.includeInactive !== true) {
+      conditions.push("status IN ('active', 'pinned')");
+    }
+
+    if (options.scope !== undefined) {
+      conditions.push("scope_type = ?");
+      params.push(options.scope);
+    }
+
+    if (options.scopeValue !== undefined) {
+      conditions.push("scope_value = ?");
+      params.push(options.scopeValue);
+    }
+
+    return { whereClause: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "", params };
+  }
+
   private searchFts(query: string, minConfidence: number, limit: number, statuses: PreferenceStatus[]): Row[] {
     if (statuses.length === 0) {
       return [];
@@ -879,8 +908,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
            LIMIT ?`,
         )
         .all(query, ...statuses, minConfidence, limit) as Row[];
-    } catch {
-      return [];
+    } catch (error) {
+      if (isMissingFtsError(error)) {
+        return [];
+      }
+      throw error;
     }
   }
 
@@ -1088,6 +1120,14 @@ interface ScopeMatch {
 }
 
 function scopeMatch(preference: PreferenceRecord, options: PreferenceSearchOptions): ScopeMatch {
+  const match = scopeSpecificMatch(preference, options);
+  if (options.scopeAgnostic === true && !match.matches) {
+    return { matches: true, weight: match.weight, reason: "scope-agnostic" };
+  }
+  return match;
+}
+
+function scopeSpecificMatch(preference: PreferenceRecord, options: PreferenceSearchOptions): ScopeMatch {
   switch (preference.scopeType) {
     case "global":
       return { matches: true, weight: 0.2, reason: "global" };
@@ -1173,6 +1213,18 @@ function isEvidenceUniqueError(error: unknown): boolean {
 
 function isRevivableStatus(status: PreferenceStatus): boolean {
   return status === "suppressed" || status === "rejected";
+}
+
+function isMissingFtsError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("no such table") ||
+    message.includes("no such module") ||
+    message.includes("unable to use function")
+  );
 }
 
 function scorePreference(

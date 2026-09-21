@@ -1,6 +1,7 @@
 import {
   renderPreferenceContext,
   type InjectionConfig,
+  type ListPreferencesOptions,
   type PreferenceRecord,
   type PreferenceStatus,
   type PreferenceStore,
@@ -126,7 +127,7 @@ export function searchPreferences(store: PreferenceStore, args: SearchArgs): Too
   }
   const limit = clampInteger(args.limit, 20, 1, 50);
   const offset = clampInteger(args.offset, 0, 0, 500);
-  const results = store.search({ prompt: query, limit: limit + offset, minConfidence: 0 });
+  const results = store.search({ prompt: query, limit: limit + offset, minConfidence: 0, scopeAgnostic: true });
   const page = results.slice(offset, offset + limit);
   const rules = page.map(
     (result): RuleSummary => ({
@@ -151,21 +152,14 @@ export function searchPreferences(store: PreferenceStore, args: SearchArgs): Too
 export function listPreferences(store: PreferenceStore, args: ListArgs): ToolResult {
   const limit = clampInteger(args.limit, 20, 1, 100);
   const offset = clampInteger(args.offset, 0, 0, 10000);
-  const records = store.list({
-    limit: limit + offset,
+  const filters: ListPreferencesOptions = {
     ...(args.status === undefined ? {} : { status: args.status, includeInactive: true }),
-  });
-  const scoped = records.filter((record) => {
-    if (args.scope !== undefined && record.scopeType !== args.scope) {
-      return false;
-    }
-    if (args.scopeValue !== undefined && record.scopeValue !== args.scopeValue) {
-      return false;
-    }
-    return true;
-  });
-  const page = scoped.slice(offset, offset + limit);
-  const rules = page.map(
+    ...(args.scope === undefined ? {} : { scope: args.scope }),
+    ...(args.scopeValue === undefined ? {} : { scopeValue: args.scopeValue }),
+  };
+  const records = store.list({ ...filters, limit, offset });
+  const total = store.count(filters);
+  const rules = records.map(
     (record): RuleSummary => ({
       id: record.id,
       text: record.statement,
@@ -174,7 +168,7 @@ export function listPreferences(store: PreferenceStore, args: ListArgs): ToolRes
       confidence: record.confidence,
     }),
   );
-  const output = { rules, total: scoped.length, hasMore: offset + limit < scoped.length };
+  const output = { rules, total, hasMore: offset + limit < total };
   const lines =
     rules.length === 0
       ? "No preferences stored for this filter. Use prefkit_remember to save the first one."

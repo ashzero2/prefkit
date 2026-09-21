@@ -155,6 +155,7 @@ export interface PreferenceStore {
   backup(destination: string): Promise<void>;
   remember(input: RememberPreferenceInput): PreferenceWithEvidence;
   list(options?: ListPreferencesOptions): PreferenceRecord[];
+  count(options?: ListPreferencesOptions): number;
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
   findByStatement(

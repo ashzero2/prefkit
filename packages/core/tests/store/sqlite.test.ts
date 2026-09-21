@@ -574,6 +574,71 @@ describe("SqlitePreferenceStore", () => {
       target.close();
     }
   });
+
+  it("searches across every scope only when scope-agnostic search is requested", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const scoped = store.remember({
+        statement: "Prefer colocated tests in this repository.",
+        scopeType: "repository",
+        scopeValue: "/workspace/project-a",
+        category: "testing",
+      });
+
+      const strict = store.search({ prompt: "colocated tests", cwd: "/workspace/project-b" });
+      expect(strict.map((result) => result.preference.id)).not.toContain(scoped.preference.id);
+
+      const agnostic = store.search({
+        prompt: "colocated tests",
+        cwd: "/workspace/project-b",
+        scopeAgnostic: true,
+      });
+      expect(agnostic.map((result) => result.preference.id)).toContain(scoped.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("counts preferences with the same filters as list", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({ statement: "Repo rule A", scopeType: "repository", scopeValue: "/a" });
+      store.remember({ statement: "Repo rule B", scopeType: "repository", scopeValue: "/b" });
+      store.remember({ statement: "Global rule", scopeType: "global" });
+      store.remember({ statement: "Candidate rule", status: "candidate" });
+
+      expect(store.count()).toBe(3);
+      expect(store.count({ scope: "repository" })).toBe(2);
+      expect(store.count({ scope: "repository", scopeValue: "/a" })).toBe(1);
+      expect(store.count({ status: "candidate", includeInactive: true })).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("falls back to lexical candidates when FTS matches are all out of scope", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      for (let index = 0; index < 5; index += 1) {
+        store.remember({
+          statement: `pnpm repo ${index}`,
+          scopeType: "repository",
+          scopeValue: "/workspace/other-repo",
+          category: "tooling",
+        });
+      }
+      const global = store.remember({
+        statement: "Prefer pnpm for JavaScript projects with a longer descriptive phrasing that dilutes the term.",
+        category: "tooling",
+      });
+
+      const results = store.search({ prompt: "pnpm", cwd: "/workspace/my-repo", limit: 1 });
+
+      expect(results.map((result) => result.preference.id)).toContain(global.preference.id);
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {
