@@ -98,6 +98,11 @@ export interface RememberPreferenceInput {
   confidence?: number;
   status?: PreferenceStatus;
   source?: string;
+  /**
+   * When the statement already exists with a suppressed or rejected status,
+   * revive it to the requested status instead of silently keeping it inactive.
+   */
+  reactivate?: boolean;
   /** Proposed predecessor; applied only when this candidate is accepted. */
   supersedesId?: string | null;
   evidence?: {

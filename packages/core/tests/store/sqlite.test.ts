@@ -448,6 +448,70 @@ describe("SqlitePreferenceStore", () => {
       store.close();
     }
   });
+
+  it("keeps a forgotten rule inactive when re-remembered and revives it only with reactivate", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const first = store.remember({ statement: "Prefer pnpm for this repository." });
+      store.forget(first.preference.id);
+
+      // Identical re-remember: same statement and default evidence summary (idempotent hash path).
+      const again = store.remember({ statement: "Prefer pnpm for this repository." });
+
+      expect(again.preference.id).toBe(first.preference.id);
+      expect(again.preference.status).toBe("suppressed");
+      expect(store.list()).toHaveLength(0);
+
+      const revived = store.remember({ statement: "Prefer pnpm for this repository.", reactivate: true });
+
+      expect(revived.preference.id).toBe(first.preference.id);
+      expect(revived.preference.status).toBe("active");
+      expect(store.list()).toHaveLength(1);
+
+      // A differing evidence summary revives through the duplicate-statement branch.
+      store.forget(first.preference.id);
+      const revivedWithNewEvidence = store.remember({
+        statement: "Prefer pnpm for this repository.",
+        reactivate: true,
+        evidence: { summary: "The user restated the preference." },
+      });
+
+      expect(revivedWithNewEvidence.preference.status).toBe("active");
+      expect(store.list()).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("imports the rest of a batch when a supersession target is missing", () => {
+    const source = createPreferenceStore(testStoreConfig());
+    const target = createPreferenceStore(testStoreConfig());
+    try {
+      const predecessor = source.remember({ statement: "Prefer npm in this repository." });
+      const replacement = source.remember({
+        statement: "Prefer pnpm in this repository.",
+        supersedesId: predecessor.preference.id,
+      });
+
+      const exported = JSON.parse(source.exportJson()) as {
+        version: number;
+        exportedAt: string;
+        preferences: Array<{ preference: { id: string } }>;
+      };
+      exported.preferences = exported.preferences.filter(
+        (item) => item.preference.id !== predecessor.preference.id,
+      );
+
+      const report = target.importJson(JSON.stringify(exported));
+
+      expect(report.preferencesImported).toBe(1);
+      expect(report.conflicts).toBe(1);
+      expect(target.get(replacement.preference.id)?.preference.supersedesId).toBeNull();
+    } finally {
+      source.close();
+      target.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

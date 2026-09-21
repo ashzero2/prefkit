@@ -215,11 +215,14 @@ export function rememberPreference(store: PreferenceStore, args: RememberArgs): 
     scope: scopeLabel(stored.preference),
     status: stored.preference.status,
   };
+  const injectable = output.status === "active" || output.status === "pinned";
   return {
     content: [
       {
         type: "text",
-        text: `Saved ${stored.preference.id} [${output.scope}]: ${stored.preference.statement}`,
+        text: injectable
+          ? `Saved ${stored.preference.id} [${output.scope}]: ${stored.preference.statement}`
+          : `Existing ${stored.preference.id} is ${output.status} [${output.scope}] and will not be injected until revived: ${stored.preference.statement}`,
       },
     ],
     structuredContent: output,

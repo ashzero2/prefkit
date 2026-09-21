@@ -100,9 +100,12 @@ export class SqlitePreferenceStore implements PreferenceStore {
       metadata: input.evidence?.metadata ?? {},
     };
 
-    const existing = this.findByEvidenceHash(evidence.evidenceHash);
-    if (existing !== null) {
-      return existing;
+    const existingByHash = this.findByEvidenceHash(evidence.evidenceHash);
+    if (existingByHash !== null) {
+      if (input.reactivate === true && isRevivableStatus(existingByHash.preference.status)) {
+        return this.revivePreference(existingByHash.preference.id, input.status ?? "active", now) ?? existingByHash;
+      }
+      return existingByHash;
     }
 
     const duplicate = this.findByStatement(preference.normalizedStatement, preference.scopeType, preference.scopeValue);
@@ -124,6 +127,8 @@ export class SqlitePreferenceStore implements PreferenceStore {
           ? Math.max(targetPref.confidence, input.confidence)
           : targetPref.confidence,
       );
+      const revivedStatus =
+        input.reactivate === true && isRevivableStatus(targetPref.status) ? input.status ?? "active" : null;
 
       this.db.transaction(() => {
         this.insertEvidence(targetEvidence);
@@ -132,10 +137,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
             `UPDATE preferences
              SET updated_at = ?,
                  last_seen_at = ?,
-                 confidence = ?
+                 confidence = ?,
+                 status = COALESCE(?, status)
              WHERE id = ?`,
           )
-          .run(now, now, newConfidence, targetPref.id);
+          .run(now, now, newConfidence, revivedStatus, targetPref.id);
       })();
 
       const updated = this.get(targetPref.id);
@@ -575,7 +581,8 @@ export class SqlitePreferenceStore implements PreferenceStore {
 
       for (const supersession of pendingSupersessions) {
         if (!this.preferenceExists(supersession.supersedesId)) {
-          throw new Error(`Preference to supersede was not found: ${supersession.supersedesId}`);
+          report.conflicts += 1;
+          continue;
         }
         this.db
           .prepare("UPDATE preferences SET supersedes_id = ? WHERE id = ?")
@@ -604,18 +611,18 @@ export class SqlitePreferenceStore implements PreferenceStore {
     `);
 
     for (const migration of migrations) {
-      const existing = this.db.prepare("SELECT id FROM schema_migrations WHERE id = ?").get(migration.id);
-      if (existing !== undefined) {
-        continue;
-      }
-
       const apply = this.db.transaction(() => {
+        const existing = this.db.prepare("SELECT id FROM schema_migrations WHERE id = ?").get(migration.id);
+        if (existing !== undefined) {
+          return;
+        }
+
         this.db.exec(migration.sql);
         this.db
           .prepare("INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)")
           .run(migration.id, migration.name, new Date().toISOString());
       });
-      apply();
+      apply.immediate();
     }
   }
 
@@ -743,6 +750,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
          LIMIT ?`,
       )
       .all(...statuses, minConfidence, limit) as Row[];
+  }
+
+  private revivePreference(id: string, status: PreferenceStatus, now: string): PreferenceWithEvidence | null {
+    this.db.prepare("UPDATE preferences SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
+    return this.get(id);
   }
 
   private updateStatus(id: string, status: PreferenceStatus): PreferenceRecord | null {
@@ -999,6 +1011,10 @@ function canonicalPath(value: string, pathApi: typeof posix | typeof win32): str
 
 function isEvidenceUniqueError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("UNIQUE constraint failed: evidence.evidence_hash");
+}
+
+function isRevivableStatus(status: PreferenceStatus): boolean {
+  return status === "suppressed" || status === "rejected";
 }
 
 function scorePreference(

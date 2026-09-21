@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import {
-  calculatePreferenceConfidence,
   createPreferenceStore,
   extractPreference,
   expandHome,
@@ -42,6 +41,7 @@ import {
 import { runStdioServer } from "@prefkit/mcp";
 import { archiveReplayFile, queueFiles, recordQueueFailure, writeQueueFile } from "./replay.js";
 import { runBackgroundWorker } from "./worker.js";
+import { learnExitCode, persistLearnResult } from "./learn.js";
 
 interface ParsedArgs {
   command: string | undefined;
@@ -118,7 +118,7 @@ async function main(argv: string[]): Promise<number> {
       recordCorrectionMetric(loadResult.config.metrics.enabled, loadResult.config.store, result.event.sessionId);
     }
     try {
-      const persisted = persistLearnResult(result, persist ? store : null);
+      const persisted = persistLearnResult(result, persist ? store : null, loadResult.config.learning);
       printLearnResult(result, {
         persisted: persisted !== null,
         ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
@@ -283,8 +283,23 @@ async function main(argv: string[]): Promise<number> {
         if (sessionId !== undefined) {
           rememberInput.evidence = { ...rememberInput.evidence, sessionId };
         }
+        if (args.flags.has("reactivate")) {
+          rememberInput.reactivate = true;
+        }
 
         const result = store.remember(rememberInput);
+        const { status } = result.preference;
+        if (status !== "active" && status !== "pinned") {
+          console.log(
+            `Stored as ${status} ${result.preference.id}: ${result.preference.statement}`,
+          );
+          console.log(
+            status === "suppressed" || status === "rejected"
+              ? "It will not be injected until revived; re-run with --reactivate to revive it."
+              : "It will not be injected while it is not active.",
+          );
+          return 0;
+        }
         console.log(`Remembered ${result.preference.id}: ${result.preference.statement}`);
         return 0;
       }
@@ -565,7 +580,7 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
         localModel: input.config.localModel,
         existingPreferences,
       });
-      const persisted = persistLearnResult(result, input.persist ? input.store : null);
+      const persisted = persistLearnResult(result, input.persist ? input.store : null, input.config.learning);
 
       if (result.ok) {
         report.extracted += 1;
@@ -730,90 +745,6 @@ function candidatePreferencesFromStore(
   } catch {
     return [];
   }
-}
-
-function learnExitCode(result: PreferenceExtractionResult): number {
-  if (result.ok) {
-    return 0;
-  }
-  return result.status === "learning_skipped" || result.status === "input_too_large" ? 0 : 1;
-}
-
-function persistLearnResult(
-  result: PreferenceExtractionResult,
-  store: PreferenceStore | null,
-): ReturnType<PreferenceStore["remember"]> | null {
-  if (store === null) {
-    return null;
-  }
-
-  if (!result.ok || !result.confidence.shouldStore || result.extraction.statement === null) {
-    return null;
-  }
-
-  const supersedingContradiction = result.extraction.contradictions.find(
-    (contradiction) => contradiction.action === "supersede_existing" && store.get(contradiction.preferenceId) !== null,
-  );
-
-  const existing = store.findByStatement(
-    result.extraction.statement,
-    result.extraction.scopeType,
-    result.extraction.scopeValue,
-  );
-
-  let confidence = result.confidence;
-  if (existing !== null) {
-    const evidenceStats = store.getEvidenceStats(existing.preference.id);
-    confidence = calculatePreferenceConfidence({
-      event: result.event,
-      extraction: result.extraction,
-      existingPositiveEvidence: evidenceStats.positiveCount,
-      repeatedAcrossRepositories: evidenceStats.distinctCwds > 1 || (result.event.cwd !== undefined && evidenceStats.distinctCwds >= 1),
-      options: {
-        globalPromotionThreshold: 8,
-        requireConfirmationForGlobal: true,
-      },
-    });
-  }
-
-  const rememberInput: RememberPreferenceInput = {
-    statement: result.extraction.statement,
-    scopeType: result.extraction.scopeType,
-    category: result.extraction.category,
-    tags: result.extraction.tags,
-    confidence: confidence.confidence,
-    status: confidence.status,
-    source: "prefkit-learn",
-    evidence: {
-      sessionId: result.event.sessionId ?? null,
-      agent: result.event.agent,
-      summary: result.extraction.rationale,
-      sourceType: result.extraction.evidenceType,
-      polarity: result.extraction.polarity,
-      weight: confidence.evidenceWeight,
-      metadata: {
-        cwd: result.event.cwd ?? null,
-        model: result.model,
-        eventType: result.event.eventType,
-        promptTokenEstimate: result.promptTokenEstimate,
-        redactions: result.redactions.map((finding) => finding.kind),
-        usage: result.usage ?? {},
-      },
-    },
-    metadata: {
-      needsConfirmation: confidence.needsConfirmation,
-      contradictions: result.extraction.contradictions,
-      confidenceReasons: confidence.reasons.map((reason) => reason.code),
-      signalReasons: result.prefilter.reasons.map((reason) => reason.code),
-    },
-    ...(supersedingContradiction === undefined ? {} : { supersedesId: supersedingContradiction.preferenceId }),
-  };
-
-  if (result.extraction.scopeValue !== null) {
-    rememberInput.scopeValue = result.extraction.scopeValue;
-  }
-
-  return store.remember(rememberInput);
 }
 
 function printLearnResult(
@@ -1064,7 +995,7 @@ function printHelp(): void {
 
 Usage:
   prefkit init [--config .prefkit.json]
-  prefkit remember "Prefer concise status updates" [--category communication] [--tag style]
+  prefkit remember "Prefer concise status updates" [--category communication] [--tag style] [--reactivate]
   prefkit list [--all] [--status active] [--scope repository] [--scope-value <val>] [--limit 20] [--offset 0]
   prefkit stats
   prefkit why <id>
