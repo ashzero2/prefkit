@@ -105,7 +105,7 @@ describe("OpenCode doctor", () => {
     expect(check(report, "plugin-entry")?.message).toContain("prefkit.ts");
   });
 
-  it("still accepts beta plugins object entries", () => {
+  it("accepts native plugins object entries", () => {
     const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-doctor-"));
     const adapterPath = join(cwd, "adapter-opencode.ts");
     const configPath = join(cwd, "opencode.jsonc");
@@ -128,9 +128,9 @@ describe("OpenCode doctor", () => {
       env: {},
     });
 
-    expect(report.ok).toBe(false);
+    expect(report.ok).toBe(true);
     expect(check(report, "plugin-entry")?.ok).toBe(true);
-    expect(check(report, "opencode-config-style")?.ok).toBe(false);
+    expect(check(report, "opencode-config-style")).toBeUndefined();
   });
 
   it("flags object entries under the current plugin key", () => {
@@ -170,6 +170,14 @@ describe("OpenCode install", () => {
     expect(report.snippet).toContain('"@prefkit/opencode"');
   });
 
+  it("defaults to the local adapter directory for native plugin entries", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
+    const report = installOpenCodeAdapter({ cwd });
+
+    expect(report.snippet).toContain("\"plugins\": [");
+    expect(report.snippet).toContain("/packages/adapter-opencode/src");
+  });
+
   it("generates a config snippet without writing by default", () => {
     const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-install-"));
     const targetPath = join(cwd, ".opencode", "opencode.jsonc");
@@ -185,7 +193,7 @@ describe("OpenCode install", () => {
     expect(report.wrote).toBe(false);
     expect(report.targetPath).toBe(targetPath);
     expect(existsSync(targetPath)).toBe(false);
-    expect(report.snippet).toContain("\"plugin\": [");
+    expect(report.snippet).toContain("\"plugins\": [");
     expect(report.snippet).toContain("\"./prefkit.ts\"");
     expect(report.snippet).toContain("\"configPath\": \"./.prefkit.json\"");
     expect(report.snippet).toContain("\"queueDir\": \"./.prefkit/queue\"");
@@ -207,7 +215,7 @@ describe("OpenCode install", () => {
     expect(existsSync(report.targetPath)).toBe(true);
     const config = readFileSync(report.targetPath, "utf8");
     expect(config).toContain("\"$schema\": \"https://opencode.ai/config.json\"");
-    expect(config).toContain("\"plugin\": [");
+    expect(config).toContain("\"plugins\": [");
     expect(config).toContain("\"../prefkit.ts\"");
   });
 
