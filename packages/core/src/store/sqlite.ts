@@ -24,6 +24,9 @@ import type {
   ImportReport,
   PreferenceStats,
   EvidenceStats,
+  EvaluationOutcomeInput,
+  EvaluationGroup,
+  OutcomeEvaluation,
 } from "./types.js";
 import { parsePreferenceExport } from "./transfer.js";
 
@@ -414,6 +417,23 @@ export class SqlitePreferenceStore implements PreferenceStore {
       increment.run("context_hits", injectedRules > 0 ? 1 : 0);
       increment.run("context_injected_rules", injectedRules);
       increment.run("context_injected_tokens", tokenEstimate);
+      if (sessionHash !== null && injectedRules > 0) {
+        const now = new Date().toISOString();
+        this.db
+          .prepare(
+            `INSERT INTO evaluation_sessions
+              (session_hash, context_injected, correction_observed, status, created_at, updated_at, closed_at)
+             VALUES (?, 1, 0, 'open', ?, ?, NULL)
+             ON CONFLICT(session_hash) DO UPDATE SET
+               context_injected = CASE
+                 WHEN evaluation_sessions.status = 'closed' THEN evaluation_sessions.context_injected
+                 ELSE 1
+               END,
+               updated_at = excluded.updated_at,
+               status = CASE WHEN evaluation_sessions.status = 'closed' THEN 'closed' ELSE 'open' END`,
+          )
+          .run(sessionHash, now, now);
+      }
       if (sessionHash !== null && preferenceIds.length > 0) {
         this.db
           .prepare(
@@ -447,13 +467,143 @@ export class SqlitePreferenceStore implements PreferenceStore {
       const linked =
         sessionHash !== null &&
         this.db.prepare("SELECT 1 FROM context_exposures WHERE session_hash = ?").get(sessionHash) !== undefined;
+      const existingEvaluation =
+        sessionHash === null
+          ? undefined
+          : (this.db
+              .prepare("SELECT context_injected, status FROM evaluation_sessions WHERE session_hash = ?")
+              .get(sessionHash) as Row | undefined);
+      const contextInjected =
+        linked || (existingEvaluation !== undefined && numberField(existingEvaluation, "context_injected") === 1);
       if (sessionHash !== null && linked) {
         this.db.prepare("DELETE FROM context_exposures WHERE session_hash = ?").run(sessionHash);
+      }
+      if (sessionHash !== null && (existingEvaluation === undefined || stringField(existingEvaluation, "status") !== "closed")) {
+        const now = new Date().toISOString();
+        this.db
+          .prepare(
+            `INSERT INTO evaluation_sessions
+              (session_hash, context_injected, correction_observed, status, created_at, updated_at, closed_at)
+             VALUES (?, ?, 1, 'open', ?, ?, NULL)
+             ON CONFLICT(session_hash) DO UPDATE SET
+               context_injected = CASE
+                 WHEN evaluation_sessions.context_injected = 1 OR excluded.context_injected = 1 THEN 1
+                 ELSE 0
+               END,
+               correction_observed = 1,
+               updated_at = excluded.updated_at,
+               status = CASE WHEN evaluation_sessions.status = 'closed' THEN 'closed' ELSE 'open' END`,
+          )
+          .run(sessionHash, contextInjected ? 1 : 0, now, now);
       }
       increment.run(linked ? "corrections_after_context" : "corrections_without_context");
       return linked;
     });
     return record();
+  }
+
+  recordEvaluationOutcome(input: EvaluationOutcomeInput): void {
+    this.init();
+
+    const sessionHash = hashSessionId(input.sessionId);
+    if (sessionHash === null) {
+      throw new Error("An evaluation outcome requires a non-empty sessionId.");
+    }
+
+    const record = this.db.transaction(() => {
+      const existing = this.db
+        .prepare("SELECT * FROM evaluation_sessions WHERE session_hash = ?")
+        .get(sessionHash) as Row | undefined;
+      const existingContext = existing === undefined ? undefined : numberField(existing, "context_injected") === 1;
+      const existingCorrection = existing === undefined ? false : numberField(existing, "correction_observed") === 1;
+      const contextInjected = input.contextInjected ?? existingContext;
+      if (contextInjected === undefined) {
+        throw new Error(
+          "This session has no recorded context exposure. Provide contextInjected explicitly when recording the outcome.",
+        );
+      }
+      if (existingContext !== undefined && existingContext !== contextInjected) {
+        throw new Error("The recorded context condition does not match this session's existing observation.");
+      }
+      if (!input.correctionObserved && existingCorrection) {
+        throw new Error("This session already has an explicit correction recorded; it cannot be marked correction-free.");
+      }
+
+      const correctionObserved = existingCorrection || input.correctionObserved;
+      const now = new Date().toISOString();
+      if (existing?.status === "closed") {
+        if (existingCorrection === correctionObserved) {
+          return;
+        }
+        throw new Error("This session already has a conflicting closed outcome.");
+      }
+
+      this.db
+        .prepare(
+          `INSERT INTO evaluation_sessions
+            (session_hash, context_injected, correction_observed, status, created_at, updated_at, closed_at)
+           VALUES (?, ?, ?, 'closed', ?, ?, ?)
+           ON CONFLICT(session_hash) DO UPDATE SET
+             correction_observed = excluded.correction_observed,
+             status = 'closed',
+             updated_at = excluded.updated_at,
+             closed_at = excluded.closed_at`,
+        )
+        .run(
+          sessionHash,
+          contextInjected ? 1 : 0,
+          correctionObserved ? 1 : 0,
+          existing === undefined ? now : stringField(existing, "created_at"),
+          now,
+          now,
+        );
+    });
+    record();
+  }
+
+  evaluateOutcomes(): OutcomeEvaluation {
+    this.init();
+
+    const groups = {
+      withContext: { sessions: 0, corrections: 0 },
+      withoutContext: { sessions: 0, corrections: 0 },
+    };
+    for (const row of this.db
+      .prepare(
+        `SELECT context_injected, correction_observed, COUNT(*) AS sessions
+         FROM evaluation_sessions
+         WHERE status = 'closed'
+         GROUP BY context_injected, correction_observed`,
+      )
+      .all() as Row[]) {
+      const group = numberField(row, "context_injected") === 1 ? groups.withContext : groups.withoutContext;
+      const sessions = numberField(row, "sessions");
+      group.sessions += sessions;
+      group.corrections += sessions * numberField(row, "correction_observed");
+    }
+
+    const withContext = evaluationGroup(groups.withContext);
+    const withoutContext = evaluationGroup(groups.withoutContext);
+    const withRate = withContext.correctionRate;
+    const withoutRate = withoutContext.correctionRate;
+    const absoluteRateDifference = withRate === null || withoutRate === null ? null : withoutRate - withRate;
+    const relativeRateDifference =
+      absoluteRateDifference === null || withoutRate === null || withoutRate === 0
+        ? null
+        : absoluteRateDifference / withoutRate;
+
+    return {
+      status: withContext.sessions > 0 && withoutContext.sessions > 0 ? "ready" : "insufficient_data",
+      completedSessions: withContext.sessions + withoutContext.sessions,
+      openSessions: numberField(
+        this.db.prepare("SELECT COUNT(*) AS count FROM evaluation_sessions WHERE status = 'open'").get() as Row,
+        "count",
+      ),
+      withContext,
+      withoutContext,
+      absoluteRateDifference,
+      relativeRateDifference,
+    };
   }
 
   pin(id: string): PreferenceRecord | null {
@@ -797,6 +947,14 @@ function rowToPreference(row: Row): PreferenceRecord {
 
 function emptyCounts<T extends string>(values: readonly T[]): Record<T, number> {
   return Object.fromEntries(values.map((value) => [value, 0])) as Record<T, number>;
+}
+
+function evaluationGroup(input: { sessions: number; corrections: number }): EvaluationGroup {
+  return {
+    sessions: input.sessions,
+    corrections: input.corrections,
+    correctionRate: input.sessions === 0 ? null : input.corrections / input.sessions,
+  };
 }
 
 function isPreferenceStatus(value: string): value is PreferenceStatus {

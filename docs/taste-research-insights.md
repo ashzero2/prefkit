@@ -14,7 +14,7 @@ events → deterministic trigger → local LLM extractor → deterministic confi
 Current state vs. plan:
 
 * **Done (Phases 0–8 hardening slice):** config, SQLite store + evidence/provenance, `remember/list/why/pin/forget/review/export/import/backup/stats`, FTS retrieval + scope + token budget, Ollama local extractor + prefilter + redaction + confidence, queue + `worker` + `replay` with bounded retries, OpenCode/Claude Code/Codex adapters, and the MCP server. The current verification baseline is 24 test files and 150 passing tests.
-* **Remaining:** outcome evaluation for whether injected context reduces later corrections. Local retrieval impressions, hit rate, estimated injected token spend, offline evaluation fixtures, the repeated-evidence global gate, and privacy-safe linkage for explicit corrections after context are now implemented; prevention still cannot be inferred from silence.
+* **Done:** outcome evaluation instrumentation and a CLI report compare explicit correction rates for explicitly closed sessions with and without injected context. Local retrieval impressions, hit rate, estimated injected token spend, offline evaluation fixtures, the repeated-evidence global gate, and privacy-safe linkage for explicit corrections after context are implemented. Open or unreported sessions are excluded, so prevention is never inferred from silence.
 * **Correctly deferred:** no vector DB, no daemon, no sync/UI, no diff-learning, no per-model overrides.
 
 The core thesis — *"LLM proposes, code disposes"* — is the strongest part of the plan. The model never sets confidence, retrieval/hot hooks never call a model, and model-proposed `active` is normalized back to `candidate`.
@@ -72,9 +72,9 @@ References consulted:
 ## 4. Recommended next moves
 
 1. **Don't add vectors yet.** Keep the Codex adapter (hooks + tiny `AGENTS.md` fallback) and MCP (`context/remember/search/why/forget/pin`) stable — they now complete the "same memory in Claude/Codex/OpenCode" promise.
-2. **Evaluate linked outcomes:** compare explicit correction rates across comparable sessions with and without injected context, and report only observed outcomes. Needed to answer "does this work?" without vibes.
+2. **Collect linked outcomes:** gather enough explicitly closed session outcomes to make the correction-rate comparison stable; report only observed outcomes.
 3. **Maintain the fixture-driven evaluation:** extend the offline corpus as extraction, scope, contradiction, and redaction behavior changes; keep it deterministic and local.
 4. **Keep the learning gate conservative:** retain `diffLearning.enabled=false` for V1 (diff intent is ambiguous), and require repeated evidence or explicit pin for `global/active`.
 5. **Docs positioning line:** *"Not session memory. Preference memory."* — SQLite you can read, scopes you can audit, rules you can `why/pin/forget`. That separates PrefKit from Mem0/Zep (cloud graph), Basic Memory (notes), claude-mem/agentmemory (episodic capture).
 
-Bottom line: the plan's bets — FTS5 over vector DB, deterministic confidence over LLM authority, scopes over global dump, fail-open hooks over blocking calls, queue-worker over daemon — are all validated by what failed for others in forums/HN in the last year. The hard part was never storage; it is false generalization + scope + retrieval hygiene, which is exactly where this design spends its complexity. The adapter/MCP last mile and the first hardening pass are complete; the next meaningful step is measuring user-visible impact locally.
+Bottom line: the plan's bets — FTS5 over vector DB, deterministic confidence over LLM authority, scopes over global dump, fail-open hooks over blocking calls, queue-worker over daemon — are all validated by what failed for others in forums/HN in the last year. The hard part was never storage; it is false generalization + scope + retrieval hygiene, which is exactly where this design spends its complexity. The adapter/MCP last mile, first hardening pass, and outcome-reporting instrumentation are complete; the next meaningful step is collecting enough explicit session outcomes locally.

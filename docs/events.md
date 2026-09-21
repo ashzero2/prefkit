@@ -98,3 +98,15 @@ Adapters should not:
 - let agent-generated output reinforce itself
 - run local model extraction directly inside prompt-injection hooks
 - write broad global preferences without explicit user wording
+
+## Outcome observations
+
+Outcome evaluation is deliberately separate from learner events. After a session has an explicit end or evaluation point, record whether a correction was observed:
+
+```bash
+pnpm prefkit evaluate --session session_123 --correction-observed
+pnpm prefkit evaluate --session session_456 --no-correction --without-context
+pnpm prefkit evaluate
+```
+
+Only explicitly closed outcomes are included in correction rates. A session that has context exposure but no outcome record remains open and is not treated as a successful prevention. Session identifiers are stored as hashes; raw prompts and transcripts are not part of the evaluation record.

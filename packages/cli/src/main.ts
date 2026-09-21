@@ -342,6 +342,34 @@ async function main(argv: string[]): Promise<number> {
         printStats(store.stats());
         return 0;
       }
+      case "evaluate": {
+        const sessionId = flagOne(args, "session");
+        if (sessionId !== undefined) {
+          const correctionObserved = args.flags.has("correction-observed");
+          const noCorrection = args.flags.has("no-correction");
+          if (correctionObserved === noCorrection) {
+            throw new Error("evaluate --session requires exactly one of --correction-observed or --no-correction.");
+          }
+
+          const withContext = args.flags.has("with-context");
+          const withoutContext = args.flags.has("without-context");
+          if (withContext && withoutContext) {
+            throw new Error("evaluate accepts only one of --with-context or --without-context.");
+          }
+
+          store.recordEvaluationOutcome({
+            sessionId,
+            correctionObserved,
+            ...(withContext ? { contextInjected: true } : {}),
+            ...(withoutContext ? { contextInjected: false } : {}),
+          });
+          console.log(`Recorded explicit outcome for session ${sessionId}.`);
+          return 0;
+        }
+
+        printOutcomeEvaluation(store.evaluateOutcomes());
+        return 0;
+      }
       case "pin": {
         const updated = store.pin(requiredId(args));
         return printMutation("Pinned", updated);
@@ -981,6 +1009,30 @@ function printStats(stats: ReturnType<ReturnType<typeof createPreferenceStore>["
   console.log(`metrics.correctionsWithoutContext=${stats.metrics.correctionsWithoutContext}`);
 }
 
+function printOutcomeEvaluation(evaluation: ReturnType<ReturnType<typeof createPreferenceStore>["evaluateOutcomes"]>): void {
+  console.log(`PrefKit outcome evaluation: ${evaluation.status}`);
+  console.log(`completedSessions=${evaluation.completedSessions}`);
+  console.log(`openSessions=${evaluation.openSessions}`);
+  printEvaluationGroup("withContext", evaluation.withContext);
+  printEvaluationGroup("withoutContext", evaluation.withoutContext);
+  console.log(`absoluteRateDifference=${formatRate(evaluation.absoluteRateDifference)}`);
+  console.log(`relativeRateDifference=${formatRate(evaluation.relativeRateDifference)}`);
+  console.log("note=Rates use explicitly closed session outcomes; silence is not treated as prevention.");
+}
+
+function printEvaluationGroup(
+  label: string,
+  group: ReturnType<ReturnType<typeof createPreferenceStore>["evaluateOutcomes"]>["withContext"],
+): void {
+  console.log(`${label}.sessions=${group.sessions}`);
+  console.log(`${label}.corrections=${group.corrections}`);
+  console.log(`${label}.correctionRate=${formatRate(group.correctionRate)}`);
+}
+
+function formatRate(value: number | null): string {
+  return value === null ? "n/a" : value.toFixed(4);
+}
+
 function printMutation(label: string, preference: PreferenceRecord | null): number {
   if (preference === null) {
     console.error("Preference not found.");
@@ -998,6 +1050,8 @@ Usage:
   prefkit remember "Prefer concise status updates" [--category communication] [--tag style] [--reactivate]
   prefkit list [--all] [--status active] [--scope repository] [--scope-value <val>] [--limit 20] [--offset 0]
   prefkit stats
+  prefkit evaluate
+  prefkit evaluate --session <id> --correction-observed|--no-correction [--with-context|--without-context]
   prefkit why <id>
   prefkit pin <id>
   prefkit forget <id>

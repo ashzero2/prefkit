@@ -101,6 +101,9 @@ export type {
   EvidenceStats,
   ContextMetricInput,
   CorrectionMetricInput,
+  EvaluationOutcomeInput,
+  EvaluationGroup,
+  OutcomeEvaluation,
   RememberPreferenceInput,
   ScopeType,
 } from "./store/types.js";

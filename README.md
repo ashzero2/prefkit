@@ -189,7 +189,21 @@ Inspect local preference, evidence, and (when enabled) context counters without 
 pnpm prefkit stats
 ```
 
-The inventory reports status, evidence source, and polarity counts. With `metrics.enabled` or `PREFKIT_METRICS_ENABLED=true`, it also reports local context requests, match/hit counts, hit rate, and estimated injected tokens. Metrics are disabled by default and do not measure prevented corrections yet.
+The inventory reports status, evidence source, and polarity counts. With `metrics.enabled` or `PREFKIT_METRICS_ENABLED=true`, it also reports local context requests, match/hit counts, hit rate, and estimated injected tokens.
+
+## Outcome Evaluation
+
+Use explicit session outcomes to compare correction rates for sessions where PrefKit injected context and sessions where it did not:
+
+```bash
+pnpm prefkit evaluate
+pnpm prefkit evaluate --session session_123 --correction-observed
+pnpm prefkit evaluate --session session_456 --no-correction --without-context
+```
+
+Context-injected sessions are tracked automatically when metrics are enabled and a session id is supplied to `prefkit context` or an adapter context hook. For a session without an exposure, pass `--with-context` or `--without-context` when recording its outcome. `--no-correction` is an explicit session observation, not an inference from missing events; open or unreported sessions are excluded from the rates. Session ids are SHA-256 hashed before storage.
+
+The report’s rate differences are `withoutContext - withContext`; a positive value means fewer observed corrections in the context group. These are descriptive comparisons, not causal claims.
 
 Pin or suppress a preference:
 
@@ -385,7 +399,8 @@ Completed:
 - Claude Code context injection, asynchronous learner event queueing, and packaged plugin layout
 - Codex context injection, asynchronous learner event queueing, hooks installer/doctor, and AGENTS.md fallback
 - MCP server with 7 annotated preference tools, stdio transport, and `prefkit mcp` passthrough
+- Explicit session outcome recording and correction-rate comparison with/without injected context
 
 Next:
 
-- Outcome evaluation: compare explicit correction rates for sessions with and without injected context; never infer prevention from silence
+- Expand the local outcome corpus and collect enough explicitly closed sessions for stable comparisons

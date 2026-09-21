@@ -218,6 +218,68 @@ describe("SqlitePreferenceStore", () => {
     }
   });
 
+  it("evaluates only explicitly closed session outcomes", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.recordContext({
+        matchedRules: 1,
+        injectedRules: 1,
+        tokenEstimate: 12,
+        sessionId: "with-context-no-correction",
+        injectedPreferenceIds: ["pref_example"],
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "with-context-no-correction",
+        correctionObserved: false,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "with-context-correction",
+        contextInjected: true,
+        correctionObserved: true,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "without-context-correction",
+        contextInjected: false,
+        correctionObserved: true,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "without-context-no-correction",
+        contextInjected: false,
+        correctionObserved: false,
+      });
+      store.recordContext({
+        matchedRules: 1,
+        injectedRules: 1,
+        tokenEstimate: 12,
+        sessionId: "open-session",
+        injectedPreferenceIds: ["pref_example"],
+      });
+
+      expect(store.evaluateOutcomes()).toEqual({
+        status: "ready",
+        completedSessions: 4,
+        openSessions: 1,
+        withContext: { sessions: 2, corrections: 1, correctionRate: 0.5 },
+        withoutContext: { sessions: 2, corrections: 1, correctionRate: 0.5 },
+        absoluteRateDifference: 0,
+        relativeRateDifference: 0,
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("requires an explicit context condition for an untracked session", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      expect(() =>
+        store.recordEvaluationOutcome({ sessionId: "unknown-session", correctionObserved: false }),
+      ).toThrow("no recorded context exposure");
+    } finally {
+      store.close();
+    }
+  });
+
   it("exports inspectable markdown", () => {
     const store = createPreferenceStore(testStoreConfig());
     try {

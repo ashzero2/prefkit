@@ -89,6 +89,29 @@ export interface CorrectionMetricInput {
   sessionId?: string | null;
 }
 
+export interface EvaluationOutcomeInput {
+  sessionId: string;
+  correctionObserved: boolean;
+  /** Required only when no context exposure was recorded for the session. */
+  contextInjected?: boolean;
+}
+
+export interface EvaluationGroup {
+  sessions: number;
+  corrections: number;
+  correctionRate: number | null;
+}
+
+export interface OutcomeEvaluation {
+  status: "ready" | "insufficient_data";
+  completedSessions: number;
+  openSessions: number;
+  withContext: EvaluationGroup;
+  withoutContext: EvaluationGroup;
+  absoluteRateDifference: number | null;
+  relativeRateDifference: number | null;
+}
+
 export interface RememberPreferenceInput {
   statement: string;
   scopeType?: ScopeType;
@@ -143,6 +166,8 @@ export interface PreferenceStore {
   getEvidenceStats(preferenceId: string): EvidenceStats;
   recordContext(input: ContextMetricInput): void;
   recordCorrection(input: CorrectionMetricInput): boolean;
+  recordEvaluationOutcome(input: EvaluationOutcomeInput): void;
+  evaluateOutcomes(): OutcomeEvaluation;
   stats(): PreferenceStats;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;
