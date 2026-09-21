@@ -1,22 +1,76 @@
 # PrefKit
 
-PrefKit is a local-first preference memory layer for coding agents. It stores durable working preferences in SQLite, keeps provenance, retrieves only relevant preferences for a task, and can learn candidate preferences from redacted agent events through a local model.
+PrefKit is a local-first **preference memory** layer for coding agents. It stores durable working preferences in SQLite with provenance, retrieves only the ones relevant to a task, and can learn candidates from redacted agent events through a local model.
 
-The current implementation supports:
+It is not conversation memory. It stores operational rules — tooling, style, workflow — that you can read, audit, and revoke.
 
-- manual preference storage
-- provenance inspection
-- status changes with `pin` and `forget`
-- deterministic preference retrieval and context rendering
-- local Ollama structured JSON extraction
-- redaction before model calls
-- deterministic signal gating and confidence scoring
-- single-event learning with optional persistence
-- automatic background queue learning with manual replay recovery
-- reviewable contradiction candidates and supersession links
-- OpenCode and Claude Code context injection and learner event queueing
+Retrieval is deterministic and never calls a model. Learning is local by default, and the model only *proposes*: code decides status and confidence.
 
-The OpenCode, Claude Code, and Codex adapters plus the MCP server are available now. The core package is intentionally adapter-agnostic.
+Adapters: **Claude Code**, **Codex**, **OpenCode** (1.18.x and 2.x), plus an **MCP server**. `@prefkit/core` is adapter-agnostic.
+
+## Install
+
+Published:
+
+```bash
+npm install --global @prefkit/cli
+prefkit init
+```
+
+The store defaults to `~/.prefkit/prefs.db`. Learning needs a local [Ollama](https://ollama.com) server; storage and retrieval do not.
+
+From source:
+
+```bash
+pnpm install
+pnpm typecheck && pnpm test
+pnpm prefkit init
+```
+
+For isolated checks, point the store elsewhere:
+
+```bash
+export PREFKIT_STORE="/tmp/prefkit-check.db"
+pnpm prefkit init
+```
+
+## Quick start
+
+```bash
+prefkit remember "Prefer pnpm for JavaScript projects." --category tooling --tag javascript
+prefkit context --prompt "set up a new JS project"
+prefkit list
+prefkit why <pref_id>
+prefkit doctor
+```
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `init` | Create the store |
+| `remember`, `list`, `why` | Store preferences and inspect provenance |
+| `pin`, `forget`, `review` | Change status; review learned candidates |
+| `context` | Deterministic, read-only retrieval for a prompt |
+| `learn`, `replay`, `queue`, `worker` | Learning pipeline (dry-run, replay, enqueue, background worker) |
+| `stats`, `evaluate` | Local counters and explicit outcome comparison |
+| `export`, `import`, `backup` | Markdown/JSON transfer and SQLite backup |
+| `doctor` | Config, store, and model diagnostics |
+| `opencode`, `codex` | Adapter `install` and `doctor` |
+| `mcp` | Serve the MCP tools over stdio |
+
+## Configuration
+
+Loaded in precedence order, highest first:
+
+1. `--config path` (or `PREFKIT_CONFIG`)
+2. environment variables
+3. `.prefkit.json` in the current directory
+4. `~/.config/prefkit/config.json`
+
+Common variables: `PREFKIT_STORE`, `PREFKIT_LEARNER`, `PREFKIT_OLLAMA_BASE_URL`, `PREFKIT_OLLAMA_MODEL`, `PREFKIT_MODEL_TEMPERATURE`, `PREFKIT_MODEL_TIMEOUT_MS`, `PREFKIT_WORKER_POLL_MS`, `PREFKIT_WORKER_BATCH_SIZE`, `PREFKIT_QUEUE_MAX_ATTEMPTS`, `PREFKIT_REDACT_SECRETS`. See [.prefkit.example.json](.prefkit.example.json) for every setting.
+
+Adapters expect `prefkit` on `PATH`; set `PREFKIT_COMMAND` / `PREFKIT_ARGS` to use a wrapper such as `pnpm`.
 
 ## Architecture
 
@@ -28,378 +82,60 @@ flowchart TD
   A -->|strong learning event| Q[Queue JSON]
   A -->|ensure one worker| W[prefkit worker]
   Q --> W
-  W --> R[Replay one bounded batch]
-  R --> S[Redact and prefilter]
-  S --> L[Local Ollama extractor]
-  L --> V[Validate and score]
-  V --> C
-  R -->|success or skip| P[queue/processed]
-  R -->|failure| Q
+  W -->|redact, gate, local model, score| C
 ```
-
-| Part | Responsibility | Model call |
-| --- | --- | --- |
-| Adapter | Connects an agent CLI to PrefKit hooks | No |
-| CLI and core | Retrieve, render, store, review, and replay | Only during learning |
-| SQLite | Preferences, evidence, status, and provenance | No |
-| Ollama | Extracts one candidate preference from redacted evidence | Local only by default |
 
 ```text
 ~/.prefkit/
-  prefs.db              preferences and evidence
-  queue/*.json          pending events and retryable failures
-  queue/processed/*.json  successfully handled events
-  queue/.worker.lock    single-worker lease
+  prefs.db                 preferences and evidence
+  queue/*.json             pending events and retryable failures
+  queue/processed/*.json   successfully handled events
+  queue/.worker.lock       single-worker lease
 ```
 
-### OpenCode request flow
-
-```text
-user prompt
-  -> chat.message captures the prompt
-  -> prefkit context searches SQLite and renders bounded context
-  -> OpenCode model-message transform appends that context
-  -> model answers with the preference available
-```
-
-### Learning and review flow
-
-```text
-strong prompt/correction
-  -> queue/<event>.json
-  -> background worker
-  -> redact -> signal gate -> Ollama JSON -> schema validation -> confidence score
-  -> candidate/active preference + evidence in SQLite
-  -> contradiction candidate: prefkit why <id> -> prefkit review <id> --accept|--reject
-```
-
-## Install
-
-```bash
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-Initialize the local store:
-
-```bash
-pnpm prefkit init
-```
-
-By default the store is `~/.prefkit/prefs.db`.
-
-For a published installation, install the CLI globally:
-
-```bash
-npm install --global @prefkit/cli
-prefkit init
-```
-
-The repository commands below use `pnpm prefkit` for local development. The OpenCode plugin uses the installed `prefkit` executable after the packages are published.
-
-For isolated checks, use a temporary store:
-
-```bash
-export PREFKIT_STORE="/tmp/prefkit-check.db"
-pnpm prefkit init
-```
-
-## Configuration
-
-PrefKit loads configuration in precedence order, highest first:
-
-1. `--config path` (or `PREFKIT_CONFIG`)
-2. environment variables
-3. `.prefkit.json` in the current directory
-4. `~/.config/prefkit/config.json`
-
-Useful environment variables:
-
-```bash
-PREFKIT_STORE=~/.prefkit/prefs.db
-PREFKIT_LEARNER=local
-PREFKIT_OLLAMA_BASE_URL=http://127.0.0.1:11434
-PREFKIT_OLLAMA_MODEL=qwen3:4b
-PREFKIT_MODEL_TEMPERATURE=0
-PREFKIT_MODEL_TIMEOUT_MS=20000
-PREFKIT_WORKER_POLL_MS=5000
-PREFKIT_WORKER_BATCH_SIZE=1
-PREFKIT_QUEUE_MAX_ATTEMPTS=3
-PREFKIT_REDACT_SECRETS=true
-```
-
-See [.prefkit.example.json](.prefkit.example.json) for all supported settings.
-
-## Doctor
-
-```bash
-pnpm prefkit doctor
-```
-
-`doctor` checks config loading, store availability, and local Ollama reachability. A model failure should be clean and should not break storage or retrieval commands.
-
-If Ollama runs on another machine, expose Ollama there and point PrefKit at it:
-
-```bash
-export PREFKIT_OLLAMA_BASE_URL="http://<host>:11434"
-export PREFKIT_OLLAMA_MODEL="qwen3:8b-q4_K_M"
-pnpm prefkit doctor
-```
-
-Ollama remote serving is controlled by Ollama's `OLLAMA_HOST` setting on the server machine.
-
-For OpenCode adapter setup:
-
-```bash
-pnpm prefkit opencode install
-pnpm prefkit opencode install --write
-pnpm prefkit opencode doctor
-pnpm prefkit opencode doctor --opencode-config ./opencode.jsonc
-```
-
-The install command prints a config snippet by default. With `--write`, it creates `.opencode/opencode.jsonc` only when a local OpenCode config does not already exist. The doctor checks supported config locations, `.opencode/plugins/` discovery, PrefKit plugin options, local adapter paths, and the queue directory that adapter-captured events will use.
-
-## Manual Preferences
-
-Add a preference:
-
-```bash
-pnpm prefkit remember "Prefer pnpm for JavaScript package management." --category tooling --tag javascript --tag package-manager
-```
-
-List preferences:
-
-```bash
-pnpm prefkit list
-pnpm prefkit list --all
-```
-
-Inspect provenance:
-
-```bash
-pnpm prefkit why <pref_id>
-```
-
-Inspect local preference, evidence, and (when enabled) context counters without sending telemetry:
-
-```bash
-pnpm prefkit stats
-```
-
-The inventory reports status, evidence source, and polarity counts. With `metrics.enabled` or `PREFKIT_METRICS_ENABLED=true`, it also reports local context requests, match/hit counts, hit rate, and estimated injected tokens.
-
-## Outcome Evaluation
-
-Use explicit session outcomes to compare correction rates for sessions where PrefKit injected context and sessions where it did not:
-
-```bash
-pnpm prefkit evaluate
-pnpm prefkit evaluate --session session_123 --correction-observed
-pnpm prefkit evaluate --session session_456 --no-correction --without-context
-```
-
-Context-injected sessions are tracked automatically when metrics are enabled and a session id is supplied to `prefkit context` or an adapter context hook. For a session without an exposure, pass `--with-context` or `--without-context` when recording its outcome. `--no-correction` is an explicit session observation, not an inference from missing events; open or unreported sessions are excluded from the rates. Session ids are SHA-256 hashed before storage.
-
-The report’s rate differences are `withoutContext - withContext`; a positive value means fewer observed corrections in the context group. These are descriptive comparisons, not causal claims.
-
-Pin or suppress a preference:
-
-```bash
-pnpm prefkit pin <pref_id>
-pnpm prefkit forget <pref_id>
-```
-
-Review a candidate produced by learning:
-
-```bash
-pnpm prefkit list --status candidate
-pnpm prefkit why <pref_id>
-pnpm prefkit review <pref_id> --accept
-pnpm prefkit review <pref_id> --reject
-```
-
-Accepting a candidate with a supersession link activates it and marks the older preference as `superseded`. Rejecting it keeps the older preference unchanged.
-
-Export:
-
-```bash
-pnpm prefkit export --format markdown
-```
-
-For lossless transfer, export preferences and evidence as JSON:
-
-```bash
-pnpm prefkit export --format json > prefkit-export.json
-```
-
-Import that JSON into another PrefKit store without overwriting existing rules:
-
-```bash
-pnpm prefkit import --input ./prefkit-export.json
-```
-
-Repeated imports are safe. Existing matching rules are skipped; conflicting IDs are reported and left unchanged.
-
-Create a SQLite backup without overwriting an existing file:
-
-```bash
-pnpm prefkit backup --output ./backups/prefs.db
-```
-
-The backup includes preferences and evidence and can be opened as a normal PrefKit store.
-
-## Context Retrieval
-
-`prefkit context` is deterministic and read-only. It does not call a model.
-
-```bash
-pnpm prefkit context --prompt "I need to name an app"
-pnpm prefkit context --prompt "I need to name an app" --why
-pnpm prefkit context --prompt "I need a testing strategy" --limit 3 --min-confidence 0.6
-```
-
-Retrieval uses SQLite FTS plus lexical fallback, scope filtering, confidence filtering, and a token-bounded renderer. It is designed to inject a small set of relevant preferences, not the whole memory database.
-
-## Learning
-
-Learning uses a local model as an extractor, not as the authority.
-
-Flow:
-
-```text
-event JSON
-  -> validate schema
-  -> redact secrets and oversized evidence
-  -> deterministic signal prefilter
-  -> local model structured JSON extraction
-  -> validate model output
-  -> deterministic confidence scoring
-  -> optional SQLite persistence
-```
-
-Dry-run one event:
-
-```bash
-pnpm prefkit learn --event-file examples/events/explicit-correction.json
-```
-
-Persist only if extraction succeeds:
-
-```bash
-pnpm prefkit learn --event-file examples/events/explicit-correction.json --persist
-```
-
-Replay queued events:
-
-```bash
-pnpm prefkit replay --queue-dir examples/events --limit 10
-pnpm prefkit replay --queue-dir examples/events --limit 10 --persist
-```
-
-With `--persist`, successfully extracted, skipped, and oversized events move to `<queue-dir>/processed`. Retryable model or storage failures stay in the queue with an attempt count; after the configured limit they move to `<queue-dir>/failed` for inspection. Malformed event files are dead-lettered immediately. Database writes are evidence-hash idempotent, so a retry after a partial failure does not create duplicates.
-
-During normal adapter use, the worker starts automatically after the first strong learning event. Run it manually when recovering a queue or using an adapter that does not provide auto-start:
-
-```bash
-pnpm prefkit worker --queue-dir ~/.prefkit/queue
-```
-
-Only one worker owns a queue at a time. Multiple agent sessions can append events concurrently; the worker processes them sequentially and context retrieval can continue while SQLite writes are happening.
-
-See [docs/model-qa.md](docs/model-qa.md) for the real-model tuning checklist.
-
-Weak events are skipped before any model call:
-
-```bash
-pnpm prefkit learn --event-file examples/events/weak-user-prompt.json
-```
-
-## OpenCode
-
-The OpenCode adapter uses `chat.message` to capture prompts, then injects bounded, relevant PrefKit context through OpenCode's model-message transform. It keeps the system transform as a compatibility fallback and can show a brief TUI confirmation after successful injection. Strong learning events are queued immediately, and the adapter starts one detached PrefKit worker so learning happens outside the prompt path.
-
-```bash
-pnpm prefkit opencode install
-pnpm prefkit opencode doctor
-```
-
-See [docs/opencode.md](docs/opencode.md) for config examples, smoke checks, and replay flow.
-
-## Claude Code
-
-The Claude Code plugin uses the documented `UserPromptSubmit` hook. One synchronous hook requests bounded context through `prefkit context`; a separate asynchronous hook queues strong preference prompts and starts the background worker after the queue accepts the event. The learning hook emits no stdout, so queue diagnostics cannot be mistaken for Claude context.
-
-For local testing from this repository:
-
-```bash
-npm install --global @prefkit/cli
-claude --plugin-dir packages/adapter-claude
-```
-
-The CLI must be available as `prefkit` on `PATH`. For a custom executable, set `PREFKIT_COMMAND`; set `PREFKIT_ARGS` to a JSON string array when a wrapper such as pnpm is required. See [docs/claude.md](docs/claude.md) for configuration and checks.
-
-## Event JSON
-
-Adapters should write compact event packets like this:
-
-```json
-{
-  "agent": "claude",
-  "cwd": "/repo",
-  "sessionId": "session_123",
-  "eventType": "explicit_correction",
-  "userPrompt": "No, use pnpm here. I prefer pnpm for JavaScript projects.",
-  "assistantSummary": "Suggested npm install.",
-  "repoContext": {
-    "packageManager": "unknown"
-  },
-  "metadata": {
-    "userEditedGeneratedOutput": false
-  }
-}
-```
-
-Supported event types:
-
-- `explicit_memory`
-- `explicit_correction`
-- `user_prompt`
-- `repeated_choice`
-- `manual_replay`
-
-Only strong signals should reach the local extractor. Ordinary prompts, silence, and unreviewed agent output should not become preferences.
-
-## Safety Model
-
-PrefKit is conservative by design:
-
-- retrieval never calls the model
-- learning is local by default
-- remote learning is disabled by default
-- redaction runs before model extraction
-- model output is schema-validated
-- model-proposed `active` status is normalized back to `candidate`
-- deterministic confidence code decides status and score
+- **Retrieval:** prompt -> FTS5 (with lexical fallback) -> scope/confidence filters -> ranked, token-bounded context block.
+- **Learning:** event -> schema validation -> redaction -> deterministic signal gate -> local model JSON -> schema validation -> confidence scoring -> optional persistence.
+- **Worker:** one process per queue, bounded batches, retry then dead-letter; only the worker writes learned preferences.
+
+## Adapters
+
+- **Claude Code** — `UserPromptSubmit` hooks; sync context injection, async learner queueing. See [docs/claude.md](docs/claude.md).
+- **Codex** — hooks when available, with a generated `AGENTS.md` fallback. See [docs/codex.md](docs/codex.md).
+- **OpenCode** — V2 `setup()` on 2.x and V1 `server()` hooks on 1.18.x from one entrypoint. See [docs/opencode.md](docs/opencode.md).
+- **MCP** — seven annotated tools over stdio for hosts without hooks. See [docs/mcp.md](docs/mcp.md).
+
+Event shape and metadata signals: [docs/events.md](docs/events.md). Model tuning: [docs/model-qa.md](docs/model-qa.md).
+
+## Safety model
+
+- retrieval never calls a model
+- learning is local; remote learning is not implemented
+- redaction runs before any model call
+- model output is schema-validated; model-proposed `active` becomes `candidate`
+- deterministic code decides status and confidence
+- global preferences require confirmation
+- candidates and suppressed rules are not injected
 - reusable workflow guidance is separated from one-session task scope
-- global preferences require confirmation by default
-- skipped and oversized events do not call the model
 
-## Roadmap
+## Limitations
 
-Completed:
+- Adapters capture the **user prompt** only (Claude/Codex `UserPromptSubmit`, OpenCode `chat.message`/prompt hook). There is no assistant-turn capture, so "correction" is prompt-pattern based.
+- Learned preferences are **candidates** until reviewed (`prefkit review`) or pinned; forgetting a rule is silent-safe, and re-adding one requires `--reactivate`.
+- The context budget uses a `characters / 4` token estimate, not a real tokenizer.
+- OpenCode 2.x requires the `plugins` config key and a **directory** entry, and the server must be restarted after config changes; the plugin's CLI calls inherit the server's environment.
+- `evaluate` is a descriptive comparison and needs a corpus of explicitly closed sessions to be meaningful.
+- No sync, UI, vectors, or daemon.
 
-- Configuration, diagnostics, and SQLite storage
-- Manual preference commands and provenance inspection
-- Deterministic retrieval and bounded context rendering
-- Local learning, redaction, confidence scoring, persistence, and replay
-- OpenCode context injection, learner event queueing, and setup diagnostics
-- Claude Code context injection, asynchronous learner event queueing, and packaged plugin layout
-- Codex context injection, asynchronous learner event queueing, hooks installer/doctor, and AGENTS.md fallback
-- MCP server with 7 annotated preference tools, stdio transport, and `prefkit mcp` passthrough
-- Explicit session outcome recording and correction-rate comparison with/without injected context
+## Development
 
-Next:
+```bash
+pnpm typecheck        # tsc, strict
+pnpm test             # vitest (196 tests)
+pnpm build:packages   # dist for publishable packages
+```
 
-- Expand the local outcome corpus and collect enough explicitly closed sessions for stable comparisons
+Tests resolve workspace packages from `src` via `vitest.config.ts` aliases and `tsconfig.base.json` paths. CI runs `typecheck`, `test`, `build:packages`, and `pack --dry-run` for each package.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
