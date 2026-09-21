@@ -47,6 +47,7 @@ Thumbs.db
 
 # Local agent tooling state
 .commandcode/
+.opencode/
 
 # Planning scratch files
 plans/
