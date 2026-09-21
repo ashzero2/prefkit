@@ -2,6 +2,7 @@
   "name": "@prefkit/opencode",
   "version": "0.2.0",
   "description": "OpenCode plugin (V1 and V2 APIs) for PrefKit preference context and learner event capture.",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "files": [
