@@ -178,7 +178,7 @@ function classifyEventType(prompt) {
   if (/\b(?:remember|save this|store this|note that)\b/i.test(prompt)) {
     return "explicit_memory";
   }
-  if (/(?:^|\b)(?:no[,\.\s]|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(prompt)) {
+  if (/(?:^|\b)(?:no(?:[,\.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(prompt)) {
     return "explicit_correction";
   }
   return "user_prompt";

@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultConfig, type ConfigLoadResult, type DoctorCheck } from "@prefkit/core";
-import { codexAgentsMdSnippet, discoverCodexHooksPaths, installCodexAdapter, runCodexDoctor } from "../src/codex.js";
+import {
+  codexAgentsMdSnippet,
+  discoverCodexHooksPaths,
+  installCodexAdapter,
+  isLocalScriptPath,
+  runCodexDoctor,
+} from "../src/codex.js";
 
 describe("Codex doctor", () => {
   it("discovers explicit hooks paths only when provided", () => {
@@ -100,6 +106,14 @@ describe("Codex doctor", () => {
   it("provides a static AGENTS.md fallback snippet", () => {
     expect(codexAgentsMdSnippet()).toContain("prefkit context");
     expect(codexAgentsMdSnippet()).toContain("prefkit:managed");
+  });
+
+  it("recognizes posix, drive-letter, and UNC scripts as local paths", () => {
+    expect(isLocalScriptPath("/opt/prefkit/context.mjs")).toBe(true);
+    expect(isLocalScriptPath("C:\\plugins\\prefkit\\context.mjs")).toBe(true);
+    expect(isLocalScriptPath("\\\\server\\share\\context.mjs")).toBe(true);
+    expect(isLocalScriptPath("${PLUGIN_ROOT}/scripts/context.mjs")).toBe(false);
+    expect(isLocalScriptPath("./scripts/context.mjs")).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expandHome, type ConfigLoadResult, type DoctorCheck } from "@prefkit/core";
 
 interface JsonObject {
@@ -247,7 +248,7 @@ function codexHookEntries(): CodexHookMatcherGroup[] {
 }
 
 function resolveAdapterScript(name: string): string {
-  const localSource = new URL(`../../adapter-codex/scripts/${name}`, import.meta.url).pathname;
+  const localSource = fileURLToPath(new URL(`../../adapter-codex/scripts/${name}`, import.meta.url));
   if (existsSync(localSource)) {
     return localSource;
   }
@@ -356,8 +357,8 @@ function entryScript(entry: CodexHookMatcherGroup): string {
   return entry.hooks[0]?.args[0] ?? "";
 }
 
-function isLocalScriptPath(value: string): boolean {
-  return value.startsWith("/");
+export function isLocalScriptPath(value: string): boolean {
+  return value.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(value) || value.startsWith("\\\\");
 }
 
 function codexHomeDir(env: NodeJS.ProcessEnv): string {
