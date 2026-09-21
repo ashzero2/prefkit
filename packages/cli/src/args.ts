@@ -1,3 +1,5 @@
+import type { PreferenceStatus, ScopeType } from "@prefkit/core";
+
 export interface ParsedArgs {
   command: string | undefined;
   positionals: string[];
@@ -123,4 +125,68 @@ function takeValue(argv: string[], index: number, name: string): { value: string
   }
 
   return { value: "true", consumed: false };
+}
+
+export function flags(args: ParsedArgs, name: string): string[] {
+  return args.flags.get(name) ?? [];
+}
+
+export function flagOne(args: ParsedArgs, name: string): string | undefined {
+  return args.flags.get(name)?.at(-1);
+}
+
+export function requiredId(args: ParsedArgs): string {
+  const id = args.positionals[0];
+  if (id === undefined) {
+    throw new Error(`${args.command ?? "command"} requires a preference id.`);
+  }
+  return id;
+}
+
+export function parseScope(value: string): ScopeType {
+  if (value === "global" || value === "repository" || value === "path" || value === "task" || value === "agent") {
+    return value;
+  }
+  throw new Error(`Unsupported scope: ${value}`);
+}
+
+export function optionalScope(value: string | undefined): ScopeType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return parseScope(value);
+}
+
+const statuses = ["candidate", "active", "pinned", "suppressed", "superseded", "rejected"] as const;
+
+export function optionalStatus(value: string | undefined): PreferenceStatus | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if ((statuses as readonly string[]).includes(value)) {
+    return value as PreferenceStatus;
+  }
+  throw new Error(`Unsupported status: ${value}`);
+}
+
+export function parseNumberFlag(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Expected a number, got: ${value}`);
+  }
+  return parsed;
+}
+
+export function parsePositiveIntegerFlag(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, got: ${value}`);
+  }
+  return parsed;
 }
