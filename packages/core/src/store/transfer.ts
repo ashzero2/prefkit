@@ -1,4 +1,14 @@
 import * as z from "zod";
+import type { StoreContext } from "./context.js";
+import {
+  allPreferences,
+  evidenceFor,
+  insertEvidence,
+  insertPreference,
+  preferenceExists,
+} from "./preferences.js";
+import { rowToPreference, samePreference, type Row } from "./rows.js";
+import type { ImportReport } from "./types.js";
 
 const preferenceStatusSchema = z.enum(["candidate", "active", "pinned", "suppressed", "superseded", "rejected"]);
 const scopeTypeSchema = z.enum(["global", "repository", "path", "task", "agent"]);
@@ -87,4 +97,106 @@ export function parsePreferenceExport(input: string): PreferenceExport {
   }
 
   return result.data;
+}
+
+export function exportMarkdown(ctx: StoreContext): string {
+  const preferences = allPreferences(ctx);
+  const lines = ["# PrefKit Preferences", "", `Exported: ${new Date().toISOString()}`, ""];
+
+  for (const pref of preferences) {
+    lines.push(`## ${pref.statement}`);
+    lines.push("");
+    lines.push(`- id: ${pref.id}`);
+    lines.push(`- status: ${pref.status}`);
+    lines.push(`- confidence: ${pref.confidence.toFixed(2)}`);
+    lines.push(`- scope: ${pref.scopeType}${pref.scopeValue === null ? "" : `:${pref.scopeValue}`}`);
+    lines.push(`- category: ${pref.category}`);
+    lines.push(`- tags: ${pref.tags.length === 0 ? "none" : pref.tags.join(", ")}`);
+    lines.push(`- source: ${pref.source}`);
+    if (pref.supersedesId !== null) {
+      lines.push(`- supersedes: ${pref.supersedesId}`);
+    }
+    lines.push(`- updated: ${pref.updatedAt}`);
+    lines.push("");
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+export function exportJson(ctx: StoreContext): string {
+  ctx.ensureSchema();
+  const preferences = allPreferences(ctx).map((preference) => ({
+    preference,
+    evidence: evidenceFor(ctx, preference.id),
+  }));
+  return `${JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), preferences }, null, 2)}\n`;
+}
+
+export function importJson(ctx: StoreContext, input: string): ImportReport {
+  ctx.ensureSchema();
+  const transfer = parsePreferenceExport(input);
+
+  return ctx.db.transaction(() => {
+    const report: ImportReport = {
+      preferencesImported: 0,
+      preferencesSkipped: 0,
+      evidenceImported: 0,
+      conflicts: 0,
+    };
+    const pendingSupersessions: Array<{ id: string; supersedesId: string }> = [];
+
+    for (const item of transfer.preferences) {
+      const existing = ctx.db.prepare("SELECT * FROM preferences WHERE id = ?").get(item.preference.id) as
+        | Row
+        | undefined;
+      if (existing !== undefined) {
+        if (!samePreference(rowToPreference(existing), item.preference)) {
+          report.conflicts += 1;
+          continue;
+        }
+        report.preferencesSkipped += 1;
+      } else {
+        insertPreference(ctx, { ...item.preference, supersedesId: null });
+        report.preferencesImported += 1;
+        if (item.preference.supersedesId !== null) {
+          pendingSupersessions.push({ id: item.preference.id, supersedesId: item.preference.supersedesId });
+        }
+      }
+
+      for (const evidence of item.evidence) {
+        const byHash = ctx.db
+          .prepare("SELECT preference_id FROM evidence WHERE evidence_hash = ?")
+          .get(evidence.evidenceHash) as Row | undefined;
+        if (byHash !== undefined) {
+          if (byHash.preference_id !== item.preference.id) {
+            report.conflicts += 1;
+          }
+          continue;
+        }
+
+        const byId = ctx.db.prepare("SELECT preference_id FROM evidence WHERE id = ?").get(evidence.id) as
+          | Row
+          | undefined;
+        if (byId !== undefined) {
+          report.conflicts += 1;
+          continue;
+        }
+
+        insertEvidence(ctx, evidence);
+        report.evidenceImported += 1;
+      }
+    }
+
+    for (const supersession of pendingSupersessions) {
+      if (!preferenceExists(ctx, supersession.supersedesId)) {
+        report.conflicts += 1;
+        continue;
+      }
+      ctx.db
+        .prepare("UPDATE preferences SET supersedes_id = ? WHERE id = ?")
+        .run(supersession.supersedesId, supersession.id);
+    }
+
+    return report;
+  })();
 }
