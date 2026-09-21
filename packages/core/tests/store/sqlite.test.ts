@@ -517,7 +517,6 @@ describe("SqlitePreferenceStore", () => {
       const first = store.remember({ statement: "Prefer pnpm for this repository." });
       store.forget(first.preference.id);
 
-      // Identical re-remember: same statement and default evidence summary (idempotent hash path).
       const again = store.remember({ statement: "Prefer pnpm for this repository." });
 
       expect(again.preference.id).toBe(first.preference.id);
@@ -530,7 +529,6 @@ describe("SqlitePreferenceStore", () => {
       expect(revived.preference.status).toBe("active");
       expect(store.list()).toHaveLength(1);
 
-      // A differing evidence summary revives through the duplicate-statement branch.
       store.forget(first.preference.id);
       const revivedWithNewEvidence = store.remember({
         statement: "Prefer pnpm for this repository.",

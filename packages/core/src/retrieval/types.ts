@@ -10,10 +10,6 @@ export interface PreferenceSearchOptions {
   limit?: number;
   minConfidence?: number;
   statuses?: PreferenceStatus[];
-  /**
-   * Match preferences in every scope instead of only those applicable to the
-   * supplied cwd/path/agent/session. Used by store-wide keyword search.
-   */
   scopeAgnostic?: boolean;
 }
 

@@ -106,7 +106,11 @@ export class SqlitePreferenceStore implements PreferenceStore {
     const existingByHash = this.findByEvidenceHash(evidence.evidenceHash);
     if (existingByHash !== null) {
       if (input.reactivate === true && isRevivableStatus(existingByHash.preference.status)) {
-        return this.revivePreference(existingByHash.preference.id, input.status ?? "active", now) ?? existingByHash;
+        const status = input.status ?? "active";
+        this.db
+          .prepare("UPDATE preferences SET status = ?, updated_at = ? WHERE id = ?")
+          .run(status, now, existingByHash.preference.id);
+        return this.get(existingByHash.preference.id) ?? existingByHash;
       }
       return existingByHash;
     }
@@ -932,11 +936,6 @@ export class SqlitePreferenceStore implements PreferenceStore {
          LIMIT ?`,
       )
       .all(...statuses, minConfidence, limit) as Row[];
-  }
-
-  private revivePreference(id: string, status: PreferenceStatus, now: string): PreferenceWithEvidence | null {
-    this.db.prepare("UPDATE preferences SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
-    return this.get(id);
   }
 
   private updateStatus(id: string, status: PreferenceStatus): PreferenceRecord | null {
