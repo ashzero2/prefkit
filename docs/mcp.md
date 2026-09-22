@@ -63,7 +63,7 @@ Seven tools. Reads are split from writes, and every tool carries `readOnly` / `d
 | `prefkit_recall` | read | Starting a task, switching scope, or before choosing tools/conventions. Returns ranked applicable rules within the token budget. |
 | `prefkit_search` | read | Looking up a specific rule, checking what is stored, or finding an id for forget/pin/why. |
 | `prefkit_list` | read | Reviewing what a scope contains, or finding rule ids. |
-| `prefkit_remember` | write (idempotent) | The user states a lasting choice or corrects you — save it rather than asking. Non-global scopes need a `scopeValue`; never guess it. |
+| `prefkit_remember` | write (idempotent) | The user states a lasting choice or corrects you — save it rather than asking. `scope` is **required**; non-global scopes also need a matching `scopeValue`. |
 | `prefkit_forget` | write (destructive, idempotent) | The user revokes a choice or a rule is stale. Find the id first. Repeat calls are safe. |
 | `prefkit_pin` | write (idempotent) | The user marks a rule as permanent. Find the id first. |
 | `prefkit_why` | read | Inspecting the provenance and evidence behind a rule id. |
@@ -87,6 +87,6 @@ When the user states a lasting choice or corrects you, save it with prefkit_reme
 ## Troubleshooting
 
 - **Only some tools visible / server won't start:** run `prefkit-mcp` by hand and read stderr — the server logs diagnostics there and keeps stdout as pure JSON-RPC. Any non-JSON line on stdout breaks framing; report it as a bug.
-- **Scope errors on remember:** repository/path/task/agent scopes require `scopeValue` (repo root, file path, or session id). Use `global` for cross-project choices.
+- **Scope errors on remember:** `scope` is required so cross-project rules are a deliberate choice — pass `global` for cross-project rules, or `repository`/`path`/`task`/`agent` with a matching `scopeValue` (repo root, file path, or session id).
 - **Database locked:** the store uses WAL with a busy timeout; concurrent hook retrieval and MCP reads are expected to coexist. A second *writer* (two `prefkit-mcp` instances on one store) serializes through SQLite locking.
 - **Agent never calls the tools:** add the AGENTS.md snippet above, or use the Claude/Codex/OpenCode hook adapters for automatic injection.

@@ -653,6 +653,21 @@ describe("SqlitePreferenceStore", () => {
       db.close();
     }
   });
+
+  it("only reviews candidate preferences", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const active = store.remember({ statement: "Prefer pnpm." });
+      expect(() => store.review(active.preference.id, "accept")).toThrow(
+        "Only candidate preferences can be reviewed",
+      );
+
+      const candidate = store.remember({ statement: "Prefer npm.", status: "candidate" });
+      expect(store.review(candidate.preference.id, "accept")?.status).toBe("active");
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

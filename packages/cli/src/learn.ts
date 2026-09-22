@@ -65,6 +65,7 @@ export function persistLearnResult(
   result: PreferenceExtractionResult,
   store: PreferenceStore | null,
   learning: ConfidenceOptions,
+  existingPreferences: CandidatePreferenceContext[] = [],
 ): ReturnType<PreferenceStore["remember"]> | null {
   if (store === null) {
     return null;
@@ -74,9 +75,12 @@ export function persistLearnResult(
     return null;
   }
 
+  const candidateIds = new Set(existingPreferences.map((preference) => preference.id));
   const supersedingContradiction = result.extraction.contradictions.find(
-    (contradiction) => contradiction.action === "supersede_existing" && store.get(contradiction.preferenceId) !== null,
+    (contradiction) => contradiction.action === "supersede_existing" && candidateIds.has(contradiction.preferenceId),
   );
+  const unresolvedContradiction =
+    result.extraction.contradictions.length > 0 && supersedingContradiction === undefined;
 
   const existing = store.findByStatement(
     result.extraction.statement,
@@ -128,6 +132,7 @@ export function persistLearnResult(
       contradictions: result.extraction.contradictions,
       confidenceReasons: confidence.reasons.map((reason) => reason.code),
       signalReasons: result.prefilter.reasons.map((reason) => reason.code),
+      ...(unresolvedContradiction ? { needsReviewReason: "unresolved-contradiction" } : {}),
     },
     ...(supersedingContradiction === undefined ? {} : { supersedesId: supersedingContradiction.preferenceId }),
   };
@@ -160,7 +165,7 @@ export async function runLearnCommand(args: ParsedArgs, loadResult: ConfigLoadRe
     recordCorrectionMetric(loadResult.config.metrics.enabled, loadResult.config.store, result.event.sessionId);
   }
   try {
-    const persisted = persistLearnResult(result, persist ? store : null, loadResult.config.learning);
+    const persisted = persistLearnResult(result, persist ? store : null, loadResult.config.learning, existingPreferences);
     printLearnResult(result, {
       persisted: persisted !== null,
       ...(persisted === null ? {} : { preferenceId: persisted.preference.id }),
@@ -306,7 +311,12 @@ async function replayEvents(input: ReplayInput): Promise<ReplayReport> {
         localModel: input.config.localModel,
         existingPreferences,
       });
-      const persisted = persistLearnResult(result, input.persist ? input.store : null, input.config.learning);
+      const persisted = persistLearnResult(
+        result,
+        input.persist ? input.store : null,
+        input.config.learning,
+        existingPreferences,
+      );
 
       if (result.ok) {
         report.extracted += 1;

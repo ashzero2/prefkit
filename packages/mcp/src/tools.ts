@@ -44,7 +44,7 @@ export interface ListArgs {
 
 export interface RememberArgs {
   statement: string;
-  scope?: ScopeType | undefined;
+  scope: ScopeType;
   scopeValue?: string | undefined;
   category?: string | undefined;
   tags?: string[] | undefined;
@@ -184,9 +184,12 @@ export function rememberPreference(store: PreferenceStore, args: RememberArgs): 
   if (statement.length === 0) {
     return toolError("remember requires a non-empty statement. Include the choice and what it applies to.");
   }
-  const scope = args.scope ?? "global";
+  const scope = args.scope;
   if (!SCOPES.includes(scope)) {
-    return toolError(`Unknown scope "${scope}". Use one of: ${SCOPES.join(", ")}.`);
+    return toolError(
+      `remember requires an explicit scope so cross-project rules are a deliberate choice. ` +
+        `Use "global" for cross-project choices, or one of: ${SCOPES.join(", ")}.`,
+    );
   }
   const scopeValue = args.scopeValue?.trim() || undefined;
   if (scope !== "global" && scopeValue === undefined) {

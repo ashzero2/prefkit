@@ -276,6 +276,11 @@ export function reviewPreference(
       return false;
     }
 
+    const currentStatus = stringField(row, "status");
+    if (currentStatus !== "candidate") {
+      throw new Error(`Only candidate preferences can be reviewed; ${id} is ${currentStatus}.`);
+    }
+
     const now = new Date().toISOString();
     const status = decision === "accept" ? "active" : "rejected";
     ctx.db.prepare("UPDATE preferences SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);

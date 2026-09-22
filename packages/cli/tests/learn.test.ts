@@ -93,4 +93,52 @@ describe("persistLearnResult", () => {
       store.close();
     }
   });
+
+  it("ignores a supersession that does not reference a known candidate", () => {
+    const { event, extraction } = fixture();
+    const store = createPreferenceStore({
+      path: join(mkdtempSync(join(tmpdir(), "prefkit-learn-")), "prefs.db"),
+      wal: false,
+      busyTimeoutMs: 1000,
+    });
+
+    try {
+      const contradicted = {
+        ...extraction,
+        contradictions: [
+          {
+            preferenceId: "pref_invented",
+            kind: "same_scope" as const,
+            action: "supersede_existing" as const,
+            rationale: "The model claimed an existing rule conflicts.",
+          },
+        ],
+      };
+      const result: PreferenceExtractionResult = {
+        ok: true,
+        status: "extracted",
+        model: "test",
+        event,
+        redactions: [],
+        prefilter: { shouldExtract: true, score: 6, threshold: 3, reasons: [] },
+        extraction: contradicted,
+        confidence: calculatePreferenceConfidence({ event, extraction: contradicted }),
+        promptTokenEstimate: 10,
+      };
+
+      const persisted = persistLearnResult(
+        result,
+        store,
+        { globalPromotionThreshold: 8, requireConfirmationForGlobal: true },
+        [],
+      );
+
+      expect(persisted?.preference.supersedesId).toBeNull();
+      expect((persisted?.preference.metadata as Record<string, unknown>).needsReviewReason).toBe(
+        "unresolved-contradiction",
+      );
+    } finally {
+      store.close();
+    }
+  });
 });

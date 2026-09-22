@@ -68,6 +68,8 @@ The deterministic gate decides whether an event is worth a model call. It is del
 
 `assistantSummary` is only populated by hosts that expose the assistant turn. The OpenCode 2 plugin captures the previous assistant message; the Claude Code and Codex hooks see the user prompt only, so their events carry an empty `assistantSummary` and their corrections are detected from the user's wording alone.
 
+A model-proposed supersession is only applied when its `preferenceId` matches a candidate rule that was supplied in the extraction packet. Otherwise the rule is stored as a candidate with `metadata.needsReviewReason = "unresolved-contradiction"` and no supersession link, so a hallucinated id can never retire a real preference. `prefkit review` only accepts candidates.
+
 ## Commands
 
 Dry-run:

@@ -10,6 +10,7 @@ import {
   recallPreferences,
   rememberPreference,
   searchPreferences,
+  type RememberArgs,
 } from "../src/tools.js";
 
 const injection = defaultConfig.injection;
@@ -66,8 +67,14 @@ describe("MCP preference tools", () => {
   it("dedupes repeat remembers to the same id", () => {
     const store = freshStore();
     try {
-      const first = rememberPreference(store, { statement: "Prefer pnpm for JavaScript projects." });
-      const second = rememberPreference(store, { statement: "Prefer pnpm for JavaScript projects." });
+      const first = rememberPreference(store, {
+        statement: "Prefer pnpm for JavaScript projects.",
+        scope: "global",
+      });
+      const second = rememberPreference(store, {
+        statement: "Prefer pnpm for JavaScript projects.",
+        scope: "global",
+      });
 
       expect((first.structuredContent as { id: string }).id).toBe(
         (second.structuredContent as { id: string }).id,
@@ -86,6 +93,19 @@ describe("MCP preference tools", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toMatch(/scopeValue/);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("requires an explicit scope instead of defaulting to global", () => {
+    const store = freshStore();
+    try {
+      const result = rememberPreference(store, { statement: "Use tabs." } as unknown as RememberArgs);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toMatch(/explicit scope/);
+      expect(store.list()).toHaveLength(0);
     } finally {
       store.close();
     }
