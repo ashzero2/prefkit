@@ -113,4 +113,29 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_context_exposures_created ON context_exposures(created_at DESC);
     `,
   },
+  {
+    id: 4,
+    name: "explicit-outcome-evaluation-sessions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS evaluation_sessions (
+        session_hash TEXT PRIMARY KEY,
+        context_injected INTEGER NOT NULL CHECK (context_injected IN (0, 1)),
+        correction_observed INTEGER NOT NULL CHECK (correction_observed IN (0, 1)),
+        status TEXT NOT NULL CHECK (status IN ('open', 'closed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_evaluation_sessions_status_context
+        ON evaluation_sessions(status, context_injected);
+    `,
+  },
+  {
+    id: 5,
+    name: "drop-unused-events-table",
+    sql: `
+      DROP TABLE IF EXISTS events;
+    `,
+  },
 ];

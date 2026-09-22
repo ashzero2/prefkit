@@ -1,8 +1,6 @@
-export type LearningMode = "local" | "api" | "off" | "manual";
-export type LocalModelProvider = "ollama" | "openai-compatible" | "mock";
+export type LearningMode = "local" | "off" | "manual";
+export type LocalModelProvider = "ollama";
 export type LocalModelThinkMode = "omit" | "false" | "true" | "low" | "medium" | "high" | "max";
-export type RemoteModelProvider = "openai-compatible";
-export type RedactFileContentsMode = "never" | "large" | "always";
 
 export interface StoreConfig {
   path: string;
@@ -33,19 +31,9 @@ export interface LocalModelConfig {
   think: LocalModelThinkMode;
 }
 
-export interface ApiModelConfig {
-  enabled: boolean;
-  provider: RemoteModelProvider;
-  baseUrl: string;
-  apiKeyEnv: string;
-  model: string;
-}
-
 export interface PrivacyConfig {
   redactSecrets: boolean;
-  redactFileContents: RedactFileContentsMode;
   maxEvidenceChars: number;
-  allowRemoteLearning: boolean;
 }
 
 export interface InjectionConfig {
@@ -53,7 +41,6 @@ export interface InjectionConfig {
   maxTokens: number;
   includeWhy: boolean;
   minConfidence: number;
-  failOpen: boolean;
 }
 
 export interface MetricsConfig {
@@ -64,7 +51,6 @@ export interface PrefKitConfig {
   store: StoreConfig;
   learning: LearningConfig;
   localModel: LocalModelConfig;
-  apiModel: ApiModelConfig;
   privacy: PrivacyConfig;
   injection: InjectionConfig;
   metrics: MetricsConfig;

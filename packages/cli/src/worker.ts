@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface WorkerBatchResult {
@@ -30,6 +30,7 @@ interface WorkerOwner {
 
 const lockDirectoryName = ".worker.lock";
 const ownerFileName = "owner.json";
+const lockGraceMs = 60_000;
 
 /**
  * Runs one queue consumer per queue directory. Files are unique and replay is
@@ -111,13 +112,24 @@ function acquireWorkerLock(queueDir: string): (() => void) | null {
 function canReclaimLock(lockDir: string): boolean {
   const ownerPath = join(lockDir, ownerFileName);
   if (!existsSync(ownerPath)) {
-    return false;
+    return isLockStale(lockDir);
   }
 
   try {
     const owner = JSON.parse(readFileSync(ownerPath, "utf8")) as Partial<WorkerOwner>;
     const pid = owner.pid;
-    return typeof pid === "number" && Number.isInteger(pid) && !isProcessAlive(pid);
+    if (typeof pid === "number" && Number.isInteger(pid)) {
+      return !isProcessAlive(pid);
+    }
+    return isLockStale(lockDir);
+  } catch {
+    return isLockStale(lockDir);
+  }
+}
+
+function isLockStale(lockDir: string): boolean {
+  try {
+    return Date.now() - statSync(lockDir).mtimeMs > lockGraceMs;
   } catch {
     return false;
   }

@@ -35,7 +35,7 @@ describe("Codex learning hook", () => {
       sessionId: "session-123",
       eventType: "explicit_memory",
       userPrompt: "Remember that I prefer concise updates.",
-      assistantSummary: "Codex captured this user prompt before model dispatch.",
+      assistantSummary: "",
       repoContext: {},
       metadata: {
         source: "codex-user-prompt-submit-hook",

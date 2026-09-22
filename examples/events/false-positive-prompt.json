@@ -1,0 +1,10 @@
+{
+  "agent": "opencode",
+  "cwd": "/repo",
+  "sessionId": "session_example",
+  "eventType": "user_prompt",
+  "userPrompt": "No worries, take your time.",
+  "assistantSummary": "",
+  "repoContext": {},
+  "metadata": {}
+}

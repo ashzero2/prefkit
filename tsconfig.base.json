@@ -13,7 +13,8 @@
     "types": ["node"],
     "resolveJsonModule": true,
     "paths": {
-      "@prefkit/core": ["./packages/core/src/index.ts"]
+      "@prefkit/core": ["./packages/core/src/index.ts"],
+      "@prefkit/mcp": ["./packages/mcp/src/server.ts"]
     }
   }
 }

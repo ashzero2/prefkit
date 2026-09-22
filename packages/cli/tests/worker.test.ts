@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,6 +34,39 @@ describe("background worker", () => {
       join(lockDir, "owner.json"),
       `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`,
     );
+
+    const result = await runBackgroundWorker({
+      queueDir,
+      intervalMs: 250,
+      batchSize: 1,
+      once: true,
+      processBatch: async () => ({ total: 0, failed: 0 }),
+    });
+
+    expect(result.status).toBe("already-running");
+  });
+
+  it("reclaims a stale lock that has no owner file", async () => {
+    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-worker-"));
+    const lockDir = join(queueDir, ".worker.lock");
+    mkdirSync(lockDir);
+    const past = new Date(Date.now() - 5 * 60 * 1000);
+    utimesSync(lockDir, past, past);
+
+    const result = await runBackgroundWorker({
+      queueDir,
+      intervalMs: 250,
+      batchSize: 1,
+      once: true,
+      processBatch: async () => ({ total: 0, failed: 0 }),
+    });
+
+    expect(result.status).toBe("stopped");
+  });
+
+  it("does not reclaim a fresh lock that has no owner file", async () => {
+    const queueDir = mkdtempSync(join(tmpdir(), "prefkit-worker-"));
+    mkdirSync(join(queueDir, ".worker.lock"));
 
     const result = await runBackgroundWorker({
       queueDir,

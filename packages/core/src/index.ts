@@ -1,7 +1,7 @@
 export { defaultConfig } from "./config/defaults.js";
 export { expandHome, loadConfig } from "./config/load.js";
+export { prefKitConfigSchema, validateAndSanitizeConfig } from "./config/schema.js";
 export type {
-  ApiModelConfig,
   ConfigLoadResult,
   InjectionConfig,
   LearningConfig,
@@ -50,6 +50,7 @@ export type {
   ConfidenceReason,
 } from "./learner/confidence.js";
 export type {
+  CandidatePreferenceContext,
   PreferenceExtractionOptions,
   PreferenceExtractionResult,
   PreferenceExtractionSkipped,
@@ -96,8 +97,12 @@ export type {
   PreferenceWithEvidence,
   ImportReport,
   PreferenceStats,
+  EvidenceStats,
   ContextMetricInput,
   CorrectionMetricInput,
+  EvaluationOutcomeInput,
+  EvaluationGroup,
+  OutcomeEvaluation,
   RememberPreferenceInput,
   ScopeType,
 } from "./store/types.js";

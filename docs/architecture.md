@@ -18,7 +18,7 @@ The core must not import Claude, Codex, OpenCode, or MCP-specific code. Adapters
 
 Storage uses SQLite through a core store interface. The first implementation uses `better-sqlite3`; callers depend on `PreferenceStore`, so the driver can be replaced later if runtime constraints change.
 
-Retrieval is deterministic. The store uses SQLite FTS5 for the first candidate set, applies status/confidence/scope filters, ranks candidates in core code, and renders a context block that fits the configured injection budget. Retrieval does not call a local or remote model.
+Retrieval is deterministic. The store uses SQLite FTS5 for the first candidate set, applies status/confidence/scope filters, ranks candidates in core code, and renders a context block that fits the configured injection budget. Retrieval does not call a local or remote model. The renderer estimates tokens as `ceil(characters / 4)`; this heuristic can under- or over-count for code and non-English text, so the configured token budget is a soft bound rather than an exact one.
 
 Learning is separate from retrieval. Agent adapters should write compact event files or call core learner APIs; they should not run model extraction in hot prompt-injection hooks. The learner path validates the event, redacts evidence, applies a deterministic prefilter, calls the configured JSON model only for strong signals, validates model output, and scores confidence in code.
 

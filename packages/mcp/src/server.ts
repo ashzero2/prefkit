@@ -148,12 +148,15 @@ export function createPrefKitServer(deps: ServerDeps): McpServer {
         "Save one durable working preference. " +
         "Use this when the user states a lasting choice ('prefer pnpm', 'tabs over spaces') or corrects you " +
         "mid-task — save it rather than asking for permission. " +
-        "Non-global scopes need a scopeValue (repository root, file path, or session id); never guess it. " +
+        "`scope` is required: pass \"global\" for cross-project choices, or a repository/path/task/agent scope with a matching " +
+        "`scopeValue` (repository root, file path, or session id); never guess it. " +
         "Returns the rule id and scope. " +
         "If you only need to read preferences, use prefkit_recall.",
       inputSchema: z.object({
         statement: z.string().min(1).describe("The preference, including the choice and what it applies to."),
-        scope: scopeSchema.optional().describe("Scope for the rule. Defaults to global."),
+        scope: scopeSchema.describe(
+          "Required. \"global\" for cross-project choices, otherwise the narrowest applicable scope.",
+        ),
         scopeValue: z.string().optional().describe("Required for repository, path, task, and agent scopes."),
         category: z.string().optional().describe("Category such as tooling, style, or testing."),
         tags: z.array(z.string()).optional().describe("Search tags."),

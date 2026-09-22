@@ -1,15 +1,43 @@
 # OpenCode Adapter
 
-PrefKit's OpenCode adapter targets the stable plugin module API used by current `opencode` releases, including OpenCode 1.18.x.
+PrefKit's OpenCode adapter targets **both** the V1 and V2 plugin APIs from one entrypoint:
+
+- OpenCode 1.18.x and newer: the V1 `server()` hook object (`chat.message`, `experimental.chat.*`).
+- OpenCode 2.x: the V2 `setup()` lifecycle, registering `session.hook("prompt")` for prompt capture and `session.hook("context")` for context injection.
+
+V2 is a breaking plugin API change: V1 hook objects are not invoked in V2, so the adapter default-exports one object that implements both. V2 reads `id` and `setup()`; V1 reads `server()`.
+
+On OpenCode 2.x the `context` hook also sees the conversation, so the adapter records the previous assistant message as `assistantSummary` for the next learner event. That makes a correction read as "the user said X after the assistant did Y". On the V1 path (and on Claude Code / Codex) events carry an empty `assistantSummary`.
+
+V2 also differs in configuration:
+
+- The plugin key is `plugins` (plural), not `plugin`.
+- An entry is a string/path or a `{ "package": ..., "options": { ... } }` object, not a `[package, options]` tuple.
+- A configured `package` must be a **directory** (the adapter's `src` directory locally, or the installed `@prefkit/opencode` package). A file path is rejected by the V2 loader.
+
+`prefkit opencode install` emits the V2-native shape by default and points at the local adapter directory.
+
+After changing the config, restart the OpenCode server so it reloads plugins:
+
+```bash
+opencode service restart
+```
+
+The plugin runs inside OpenCode's server process, so the `prefkit` calls it makes inherit the **server's** environment. Set `PREFKIT_STORE` / `PREFKIT_CONFIG` before starting the server, not just on the client command.
+
+For hook diagnostics, set `PREFKIT_OPENCODE_DEBUG` to a file path; the plugin appends one line per hook invocation:
+
+```bash
+export PREFKIT_OPENCODE_DEBUG=/tmp/prefkit-opencode.log
+```
 
 OpenCode plugin docs describe:
 
-- plugin entries in `plugin` for current `opencode` releases
-- beta/v2 plugin entries in `plugins`
+- plugin entries in `plugins` for OpenCode 2.x (`plugin` for 1.x)
+- the V2 `setup()` lifecycle and `session.hook(...)` registrations
 - local discovery under `.opencode/plugins/`
-- default plugin exports with `id` and `server`
-- the stable `chat.message` hook for user-message capture
-- the installed runtime's `experimental.chat.system.transform` hook for context injection before model dispatch
+- the stable `chat.message` hook for user-message capture in 1.x
+- context injection before model dispatch in 1.x via `experimental.chat.system.transform` and `experimental.chat.messages.transform`
 - hook failures failing the intercepted operation, so adapters must catch expected errors inside hooks
 
 The plugin API is moving quickly, so verify against your installed OpenCode version before relying on this in daily work.
@@ -56,22 +84,22 @@ If the project has no local OpenCode config yet, PrefKit can create `.opencode/o
 pnpm prefkit opencode install --write
 ```
 
-For current local development from this repo, the generated package value points at the local adapter source file. For a packaged install, use the `@prefkit/opencode` package once it is published:
+For current local development from this repo, the generated `package` value points at the local adapter directory. For a packaged install, use the `@prefkit/opencode` package once it is published:
 
 ```bash
 npm install --global @prefkit/cli
 prefkit opencode install --adapter-package @prefkit/opencode
 ```
 
-You can also add the plugin entry manually to `opencode.jsonc`:
+You can also add the plugin entry manually to `opencode.jsonc`. OpenCode 2.x uses `plugins`, and the entry must point at a directory:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    [
-      "@prefkit/opencode",
-      {
+  "plugins": [
+    {
+      "package": "@prefkit/opencode",
+      "options": {
         "enabled": true,
         "injectContext": true,
         "queueEvents": true,
@@ -87,10 +115,12 @@ You can also add the plugin entry manually to `opencode.jsonc`:
         "notifyOnInjection": "once-per-session",
         "notificationDurationMs": 5000
       }
-    ]
+    }
   ]
 }
 ```
+
+On OpenCode 1.18.x, keep the V1 shape (`plugin` with a `[package, options]` tuple). The same adapter package serves both.
 
 If you do not use `configPath`, PrefKit will look for `.prefkit.json` from the OpenCode worktree and then the user config path.
 

@@ -2,6 +2,7 @@
   "name": "@prefkit/codex",
   "version": "0.1.0",
   "description": "Codex plugin for PrefKit preference context injection and background learning.",
+  "license": "Apache-2.0",
   "type": "module",
   "files": [
     ".codex-plugin",

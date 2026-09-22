@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expandHome, type ConfigLoadResult, type DoctorCheck } from "@prefkit/core";
 
 interface JsonObject {
@@ -19,8 +20,6 @@ interface OpenCodeConfigInspection {
   message?: string;
   entries: OpenCodePluginEntry[];
   disabled: boolean;
-  usedPluginKey: boolean;
-  usedPluginsKey: boolean;
   invalidPluginEntries: string[];
 }
 
@@ -128,7 +127,7 @@ export function installOpenCodeAdapter(options: OpenCodeInstallOptions): OpenCod
   const snippet = JSON.stringify(
     {
       $schema: "https://opencode.ai/config.json",
-      plugin: [[entry.package, entry.options]],
+      plugins: [{ package: entry.package, options: entry.options }],
     },
     null,
     2,
@@ -280,16 +279,16 @@ function openCodePluginEntry(
 }
 
 function defaultAdapterSpecifier(): string {
-  const localSource = new URL("../../adapter-opencode/src/index.ts", import.meta.url).pathname;
-  return existsSync(localSource) ? localSource : defaultAdapterPackage;
+  const localDirectory = fileURLToPath(new URL("../../adapter-opencode/src", import.meta.url));
+  return existsSync(localDirectory) ? localDirectory : defaultAdapterPackage;
 }
 
 function localPrefKitCliOptions(adapterPackage: string): JsonObject {
-  if (!adapterPackage.startsWith("/") || !adapterPackage.endsWith("/packages/adapter-opencode/src/index.ts")) {
+  if (!adapterPackage.startsWith("/") || !adapterPackage.includes("/packages/adapter-opencode/")) {
     return {};
   }
 
-  const repoRoot = resolve(dirname(adapterPackage), "../../..");
+  const repoRoot = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/+$/u, "");
   return {
     prefkitCommand: "pnpm",
     prefkitArgs: ["--dir", repoRoot, "--silent", "prefkit"],
@@ -307,8 +306,6 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
         message: "Expected the OpenCode config to be a JSON object.",
         entries: [],
         disabled: false,
-        usedPluginKey: false,
-        usedPluginsKey: false,
         invalidPluginEntries: [],
       };
     }
@@ -323,25 +320,21 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
         ok: true,
         entries: [],
         disabled: false,
-        usedPluginKey: false,
-        usedPluginsKey: false,
         invalidPluginEntries: [],
       };
     }
 
     const currentPluginEntries = hasPluginEntries ? pluginEntries(path, pluginEntriesValue, "plugin") : emptyPluginEntries();
-    const betaPluginEntries = hasPluginsEntries ? pluginEntries(path, pluginsEntriesValue, "plugins") : emptyPluginEntries();
+    const pluginsKeyEntries = hasPluginsEntries ? pluginEntries(path, pluginsEntriesValue, "plugins") : emptyPluginEntries();
 
     return {
       path,
       ok: true,
-      entries: [...currentPluginEntries.entries, ...betaPluginEntries.entries],
+      entries: [...currentPluginEntries.entries, ...pluginsKeyEntries.entries],
       disabled:
         (hasPluginEntries && disablesPrefKit(pluginEntriesValue)) ||
         (hasPluginsEntries && disablesPrefKit(pluginsEntriesValue)),
-      usedPluginKey: hasPluginEntries,
-      usedPluginsKey: hasPluginsEntries,
-      invalidPluginEntries: [...currentPluginEntries.invalidEntries, ...betaPluginEntries.invalidEntries],
+      invalidPluginEntries: [...currentPluginEntries.invalidEntries, ...pluginsKeyEntries.invalidEntries],
     };
   } catch (error) {
     return {
@@ -350,8 +343,6 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
       message: error instanceof Error ? error.message : String(error),
       entries: [],
       disabled: false,
-      usedPluginKey: false,
-      usedPluginsKey: false,
       invalidPluginEntries: [],
     };
   }
@@ -373,14 +364,6 @@ function configStyleChecks(inspections: OpenCodeConfigInspection[]): DoctorCheck
   for (const inspection of inspections) {
     if (!inspection.ok) {
       continue;
-    }
-
-    if (inspection.usedPluginsKey && !inspection.usedPluginKey) {
-      checks.push({
-        name: "opencode-config-style",
-        ok: false,
-        message: `${inspection.path} uses beta 'plugins'. Current opencode config schema uses 'plugin'.`,
-      });
     }
 
     for (const invalidEntry of inspection.invalidPluginEntries) {
@@ -470,7 +453,9 @@ function pluginEntries(configPath: string, plugins: unknown[], key: "plugin" | "
 
     if (Array.isArray(plugin)) {
       if (key !== "plugin") {
-        invalidEntries.push(`plugins.${index} is an array tuple, but beta 'plugins' entries should be strings or objects.`);
+        invalidEntries.push(
+          `plugins.${index} is an array tuple; use a string/path or a { package, options } object.`,
+        );
         continue;
       }
       if (typeof plugin[0] === "string" && isPrefKitSpecifier(plugin[0])) {

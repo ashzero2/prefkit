@@ -35,6 +35,8 @@ export interface OpenCodeQueueBridgeInput {
   event: OpenCodeContextEvent;
   cwd: string;
   options: OpenCodeAdapterOptions;
+  assistantSummary?: string;
+  queuedAtHook?: string;
 }
 
 export interface OpenCodeWorkerBridgeInput {
@@ -109,6 +111,8 @@ export async function queueOpenCodeLearnerEventViaCli(
     cwd: input.cwd,
     prompt,
     maxPromptChars: boundedPromptLength(input.options.maxPromptChars),
+    ...(input.assistantSummary === undefined ? {} : { assistantSummary: input.assistantSummary }),
+    ...(input.queuedAtHook === undefined ? {} : { queuedAtHook: input.queuedAtHook }),
   });
   const args = [
     ...(input.options.prefkitArgs ?? []),

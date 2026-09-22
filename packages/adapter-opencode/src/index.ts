@@ -3,6 +3,8 @@ import {
   loadOpenCodePreferenceContextViaCli,
   queueOpenCodeLearnerEventViaCli,
 } from "./bridge.js";
+import { adapterOptions, errorMessage } from "./shared.js";
+import { openCodeV2Plugin } from "./v2.js";
 import type {
   OpenCodeAdapterOptions,
   OpenCodeChatMessageInput,
@@ -16,7 +18,7 @@ import type {
 } from "./types.js";
 
 const plugin: OpenCodePluginModule = {
-  id: "prefkit.opencode",
+  ...openCodeV2Plugin(),
   async server(ctx: OpenCodeServerPluginInput, rawOptions) {
     const options = adapterOptions(rawOptions);
     const cwd = ctx.directory || ctx.worktree || process.cwd();
@@ -149,42 +151,18 @@ export {
   ensureOpenCodeWorkerViaCli,
 } from "./bridge.js";
 export { extractLatestUserPrompt, learnerEventFromOpenCodeContext, shouldQueueOpenCodeLearnerEvent } from "./queue.js";
+export { openCodePluginId, openCodeV2Plugin } from "./v2.js";
 export type {
   OpenCodeAdapterOptions,
   OpenCodeContextEvent,
   OpenCodeHooks,
   OpenCodePluginModule,
   OpenCodeServerPluginInput,
+  OpenCodeV2ContextEvent,
+  OpenCodeV2PluginContext,
+  OpenCodeV2PluginDefinition,
+  OpenCodeV2PromptEvent,
 } from "./types.js";
-
-function adapterOptions(input: Record<string, unknown> | undefined): OpenCodeAdapterOptions {
-  if (input === undefined) {
-    return {};
-  }
-
-  return {
-    ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
-    ...(typeof input.injectContext === "boolean" ? { injectContext: input.injectContext } : {}),
-    ...(typeof input.configPath === "string" ? { configPath: input.configPath } : {}),
-    ...(typeof input.includeWhy === "boolean" ? { includeWhy: input.includeWhy } : {}),
-    ...(typeof input.minConfidence === "number" ? { minConfidence: input.minConfidence } : {}),
-    ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
-    ...(typeof input.queueEvents === "boolean" ? { queueEvents: input.queueEvents } : {}),
-    ...(typeof input.queueDir === "string" ? { queueDir: input.queueDir } : {}),
-    ...(typeof input.queueWeakEvents === "boolean" ? { queueWeakEvents: input.queueWeakEvents } : {}),
-    ...(typeof input.maxPromptChars === "number" ? { maxPromptChars: input.maxPromptChars } : {}),
-    ...(typeof input.prefkitCommand === "string" ? { prefkitCommand: input.prefkitCommand } : {}),
-    ...(Array.isArray(input.prefkitArgs) && input.prefkitArgs.every((value) => typeof value === "string")
-      ? { prefkitArgs: input.prefkitArgs }
-      : {}),
-    ...(typeof input.contextTimeoutMs === "number" ? { contextTimeoutMs: input.contextTimeoutMs } : {}),
-    ...(typeof input.autoStartWorker === "boolean" ? { autoStartWorker: input.autoStartWorker } : {}),
-    ...(isNotificationMode(input.notifyOnInjection) ? { notifyOnInjection: input.notifyOnInjection } : {}),
-    ...(typeof input.notificationDurationMs === "number"
-      ? { notificationDurationMs: input.notificationDurationMs }
-      : {}),
-  };
-}
 
 function extractChatPrompt(output: OpenCodeChatMessageOutput): string {
   const messageText = textFromUnknown(output.message);
@@ -328,10 +306,6 @@ class SessionPromptCache {
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function latestUserMessage(messages: OpenCodeModelMessage[]): OpenCodeModelMessage | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -368,10 +342,6 @@ function appendSystemContext(system: string[], context: string): void {
 function stringField(value: Record<string, unknown>, key: string): string | undefined {
   const field = value[key];
   return typeof field === "string" && field.length > 0 ? field : undefined;
-}
-
-function isNotificationMode(value: unknown): value is OpenCodeNotificationMode {
-  return value === "off" || value === "once-per-session" || value === "always";
 }
 
 function notifyInjection(

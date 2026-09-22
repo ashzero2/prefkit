@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ConfigLoadResult } from "./config/types.js";
 import { OllamaModel } from "./model/ollama.js";
-import type { ModelHealth } from "./model/types.js";
 import { createPreferenceStore, storeExists } from "./store/sqlite.js";
 
 export interface DoctorCheck {
@@ -17,33 +16,37 @@ export interface DoctorReport {
 }
 
 export async function runDoctor(loadResult: ConfigLoadResult): Promise<DoctorReport> {
-  const checks: DoctorCheck[] = [];
   const { config } = loadResult;
 
-  checks.push({
-    name: "config",
-    ok: loadResult.warnings.length === 0,
-    message:
-      loadResult.warnings.length === 0
-        ? sourceMessage(loadResult.sources)
-        : loadResult.warnings.join(" "),
-  });
+  const critical: DoctorCheck[] = [
+    {
+      name: "config",
+      ok: loadResult.warnings.length === 0,
+      message:
+        loadResult.warnings.length === 0 ? sourceMessage(loadResult.sources) : loadResult.warnings.join(" "),
+    },
+    storeDirectoryCheck(config),
+    storeCheck(config.store),
+  ];
 
-  const storeDirectoryExists = existsSync(dirname(config.store.path));
-  checks.push({
-    name: "store-directory",
-    ok: storeDirectoryExists,
-    message: storeDirectoryExists
-      ? `Store directory exists: ${dirname(config.store.path)}`
-      : `Store directory does not exist yet: ${dirname(config.store.path)}. Run prefkit init.`,
-  });
-
-  checks.push(storeCheck(config.store));
-  checks.push(await localModelCheck(config.localModel));
+  const modelCheck = await localModelCheck(config.localModel);
+  const modelRequired = config.learning.enabled && config.learning.mode !== "off";
 
   return {
-    ok: checks.every((check) => check.ok),
-    checks,
+    ok: critical.every((check) => check.ok) && (!modelRequired || modelCheck.ok),
+    checks: [...critical, modelCheck],
+  };
+}
+
+function storeDirectoryCheck(config: ConfigLoadResult["config"]): DoctorCheck {
+  const directory = dirname(config.store.path);
+  const exists = existsSync(directory);
+  return {
+    name: "store-directory",
+    ok: exists,
+    message: exists
+      ? `Store directory exists: ${directory}`
+      : `Store directory does not exist yet: ${directory}. Run prefkit init.`,
   };
 }
 
@@ -76,15 +79,7 @@ function storeCheck(config: ConfigLoadResult["config"]["store"]): DoctorCheck {
 }
 
 async function localModelCheck(config: ConfigLoadResult["config"]["localModel"]): Promise<DoctorCheck> {
-  if (config.provider !== "ollama") {
-    return {
-      name: "local-model",
-      ok: false,
-      message: `Unsupported local model provider in Phase 0: ${config.provider}`,
-    };
-  }
-
-  const health: ModelHealth = await new OllamaModel(config).health();
+  const health = await new OllamaModel(config).health();
   return {
     name: "local-model",
     ok: health.ok,

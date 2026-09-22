@@ -92,7 +92,6 @@ describe("retrieval and context rendering", () => {
           maxTokens: 45,
           includeWhy: false,
           minConfidence: 0.45,
-          failOpen: true,
         },
       });
 
@@ -123,7 +122,6 @@ describe("retrieval and context rendering", () => {
           maxTokens: 700,
           includeWhy: false,
           minConfidence: 0.45,
-          failOpen: true,
         },
       };
 

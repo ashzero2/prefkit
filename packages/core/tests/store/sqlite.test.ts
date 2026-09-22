@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { createPreferenceStore, type StoreConfig } from "../../src/index.js";
 
@@ -218,6 +219,68 @@ describe("SqlitePreferenceStore", () => {
     }
   });
 
+  it("evaluates only explicitly closed session outcomes", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.recordContext({
+        matchedRules: 1,
+        injectedRules: 1,
+        tokenEstimate: 12,
+        sessionId: "with-context-no-correction",
+        injectedPreferenceIds: ["pref_example"],
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "with-context-no-correction",
+        correctionObserved: false,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "with-context-correction",
+        contextInjected: true,
+        correctionObserved: true,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "without-context-correction",
+        contextInjected: false,
+        correctionObserved: true,
+      });
+      store.recordEvaluationOutcome({
+        sessionId: "without-context-no-correction",
+        contextInjected: false,
+        correctionObserved: false,
+      });
+      store.recordContext({
+        matchedRules: 1,
+        injectedRules: 1,
+        tokenEstimate: 12,
+        sessionId: "open-session",
+        injectedPreferenceIds: ["pref_example"],
+      });
+
+      expect(store.evaluateOutcomes()).toEqual({
+        status: "ready",
+        completedSessions: 4,
+        openSessions: 1,
+        withContext: { sessions: 2, corrections: 1, correctionRate: 0.5 },
+        withoutContext: { sessions: 2, corrections: 1, correctionRate: 0.5 },
+        absoluteRateDifference: 0,
+        relativeRateDifference: 0,
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("requires an explicit context condition for an untracked session", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      expect(() =>
+        store.recordEvaluationOutcome({ sessionId: "unknown-session", correctionObserved: false }),
+      ).toThrow("no recorded context exposure");
+    } finally {
+      store.close();
+    }
+  });
+
   it("exports inspectable markdown", () => {
     const store = createPreferenceStore(testStoreConfig());
     try {
@@ -310,6 +373,299 @@ describe("SqlitePreferenceStore", () => {
     } finally {
       source.close();
       target.close();
+    }
+  });
+
+  it("excludes unreviewed candidates from search by default and includes them when requested", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const active = store.remember({
+        statement: "Always format code with prettier.",
+        category: "formatting",
+      });
+      const candidate = store.remember({
+        statement: "Always format code with biome.",
+        category: "formatting",
+        status: "candidate",
+      });
+
+      // Default search: only active and pinned
+      const defaultResults = store.search({ prompt: "format code with tools" });
+      const defaultIds = defaultResults.map((r) => r.preference.id);
+      expect(defaultIds).toContain(active.preference.id);
+      expect(defaultIds).not.toContain(candidate.preference.id);
+
+      // Explicit search with candidate status
+      const candidateResults = store.search({
+        prompt: "format code with tools",
+        statuses: ["candidate"],
+      });
+      const candidateIds = candidateResults.map((r) => r.preference.id);
+      expect(candidateIds).toContain(candidate.preference.id);
+      expect(candidateIds).not.toContain(active.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("excludes candidates from list by default and filters by scope and offset in SQL", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({ statement: "Global rule 1", scopeType: "global" });
+      store.remember({ statement: "Global rule 2", scopeType: "global" });
+      store.remember({ statement: "Repo rule A", scopeType: "repository", scopeValue: "/workspace/project-a" });
+      store.remember({ statement: "Repo rule B", scopeType: "repository", scopeValue: "/workspace/project-b" });
+      store.remember({ statement: "Candidate rule", status: "candidate" });
+
+      // Default list excludes candidates
+      const defaultList = store.list();
+      expect(defaultList).toHaveLength(4);
+      expect(defaultList.map((p) => p.status)).not.toContain("candidate");
+
+      // Filter by status candidate
+      const candidates = store.list({ status: "candidate" });
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]?.statement).toBe("Candidate rule");
+
+      // Filter by scope
+      const repoPrefs = store.list({ scope: "repository" });
+      expect(repoPrefs).toHaveLength(2);
+
+      // Pagination with limit and offset
+      const page1 = store.list({ scope: "repository", limit: 1, offset: 0 });
+      const page2 = store.list({ scope: "repository", limit: 1, offset: 1 });
+      expect(page1).toHaveLength(1);
+      expect(page2).toHaveLength(1);
+      expect(page1[0]?.id).not.toBe(page2[0]?.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("computes monotonic positive rank weights for FTS5 bm25 negative scores", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({
+        statement: "Use typescript strict mode for backend services.",
+        category: "compiler",
+      });
+      store.remember({
+        statement: "Backend services require typescript validation.",
+        category: "compiler",
+      });
+
+      const results = store.search({ prompt: "typescript strict mode" });
+      expect(results.length).toBeGreaterThan(0);
+      for (const result of results) {
+        expect(result.score).toBeGreaterThan(0);
+        if (result.reasons.includes("fts")) {
+          expect(result.score).toBeGreaterThan(result.preference.confidence);
+        }
+      }
+    } finally {
+      store.close();
+    }
+  });
+
+  it("deduplicates preferences by statement and scope, appending evidence onto the existing record", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const first = store.remember({
+        statement: "Prefer pnpm for monorepos.",
+        category: "tooling",
+        evidence: {
+          summary: "First observation in repo-1.",
+          metadata: { cwd: "/workspace/repo-1" },
+        },
+      });
+
+      const second = store.remember({
+        statement: "  prefer   PNPM for monorepos.  ",
+        category: "tooling",
+        evidence: {
+          summary: "Second observation in repo-2.",
+          metadata: { cwd: "/workspace/repo-2" },
+        },
+      });
+
+      // Same preference ID reused
+      expect(second.preference.id).toBe(first.preference.id);
+
+      // Single preference in store list
+      expect(store.list()).toHaveLength(1);
+
+      // Both evidence records attached
+      const retrieved = store.get(first.preference.id);
+      expect(retrieved?.evidence).toHaveLength(2);
+
+      // Evidence counting and stats
+      expect(store.countPositiveEvidence(first.preference.id)).toBe(2);
+      const stats = store.getEvidenceStats(first.preference.id);
+      expect(stats.positiveCount).toBe(2);
+      expect(stats.distinctCwds).toBe(2);
+
+      // findByStatement finds the record
+      const found = store.findByStatement("prefer pnpm for monorepos.", "global");
+      expect(found?.preference.id).toBe(first.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("keeps a forgotten rule inactive when re-remembered and revives it only with reactivate", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const first = store.remember({ statement: "Prefer pnpm for this repository." });
+      store.forget(first.preference.id);
+
+      const again = store.remember({ statement: "Prefer pnpm for this repository." });
+
+      expect(again.preference.id).toBe(first.preference.id);
+      expect(again.preference.status).toBe("suppressed");
+      expect(store.list()).toHaveLength(0);
+
+      const revived = store.remember({ statement: "Prefer pnpm for this repository.", reactivate: true });
+
+      expect(revived.preference.id).toBe(first.preference.id);
+      expect(revived.preference.status).toBe("active");
+      expect(store.list()).toHaveLength(1);
+
+      store.forget(first.preference.id);
+      const revivedWithNewEvidence = store.remember({
+        statement: "Prefer pnpm for this repository.",
+        reactivate: true,
+        evidence: { summary: "The user restated the preference." },
+      });
+
+      expect(revivedWithNewEvidence.preference.status).toBe("active");
+      expect(store.list()).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("imports the rest of a batch when a supersession target is missing", () => {
+    const source = createPreferenceStore(testStoreConfig());
+    const target = createPreferenceStore(testStoreConfig());
+    try {
+      const predecessor = source.remember({ statement: "Prefer npm in this repository." });
+      const replacement = source.remember({
+        statement: "Prefer pnpm in this repository.",
+        supersedesId: predecessor.preference.id,
+      });
+
+      const exported = JSON.parse(source.exportJson()) as {
+        version: number;
+        exportedAt: string;
+        preferences: Array<{ preference: { id: string } }>;
+      };
+      exported.preferences = exported.preferences.filter(
+        (item) => item.preference.id !== predecessor.preference.id,
+      );
+
+      const report = target.importJson(JSON.stringify(exported));
+
+      expect(report.preferencesImported).toBe(1);
+      expect(report.conflicts).toBe(1);
+      expect(target.get(replacement.preference.id)?.preference.supersedesId).toBeNull();
+    } finally {
+      source.close();
+      target.close();
+    }
+  });
+
+  it("searches across every scope only when scope-agnostic search is requested", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const scoped = store.remember({
+        statement: "Prefer colocated tests in this repository.",
+        scopeType: "repository",
+        scopeValue: "/workspace/project-a",
+        category: "testing",
+      });
+
+      const strict = store.search({ prompt: "colocated tests", cwd: "/workspace/project-b" });
+      expect(strict.map((result) => result.preference.id)).not.toContain(scoped.preference.id);
+
+      const agnostic = store.search({
+        prompt: "colocated tests",
+        cwd: "/workspace/project-b",
+        scopeAgnostic: true,
+      });
+      expect(agnostic.map((result) => result.preference.id)).toContain(scoped.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("counts preferences with the same filters as list", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({ statement: "Repo rule A", scopeType: "repository", scopeValue: "/a" });
+      store.remember({ statement: "Repo rule B", scopeType: "repository", scopeValue: "/b" });
+      store.remember({ statement: "Global rule", scopeType: "global" });
+      store.remember({ statement: "Candidate rule", status: "candidate" });
+
+      expect(store.count()).toBe(3);
+      expect(store.count({ scope: "repository" })).toBe(2);
+      expect(store.count({ scope: "repository", scopeValue: "/a" })).toBe(1);
+      expect(store.count({ status: "candidate", includeInactive: true })).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("falls back to lexical candidates when FTS matches are all out of scope", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      for (let index = 0; index < 5; index += 1) {
+        store.remember({
+          statement: `pnpm repo ${index}`,
+          scopeType: "repository",
+          scopeValue: "/workspace/other-repo",
+          category: "tooling",
+        });
+      }
+      const global = store.remember({
+        statement: "Prefer pnpm for JavaScript projects with a longer descriptive phrasing that dilutes the term.",
+        category: "tooling",
+      });
+
+      const results = store.search({ prompt: "pnpm", cwd: "/workspace/my-repo", limit: 1 });
+
+      expect(results.map((result) => result.preference.id)).toContain(global.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("drops the unused events table", () => {
+    const config = testStoreConfig();
+    const store = createPreferenceStore(config);
+    store.init();
+    store.close();
+
+    const db = new Database(config.path, { readonly: true });
+    try {
+      const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'events'").get();
+      expect(row).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("only reviews candidate preferences", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const active = store.remember({ statement: "Prefer pnpm." });
+      expect(() => store.review(active.preference.id, "accept")).toThrow(
+        "Only candidate preferences can be reviewed",
+      );
+
+      const candidate = store.remember({ statement: "Prefer npm.", status: "candidate" });
+      expect(store.review(candidate.preference.id, "accept")?.status).toBe("active");
+    } finally {
+      store.close();
     }
   });
 });

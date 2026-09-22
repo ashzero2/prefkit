@@ -35,7 +35,7 @@ describe("Claude learning hook", () => {
       sessionId: "session-123",
       eventType: "explicit_memory",
       userPrompt: "Remember that I prefer concise updates.",
-      assistantSummary: "Claude Code captured this user prompt before model dispatch.",
+      assistantSummary: "",
       repoContext: {},
       metadata: {
         source: "claude-user-prompt-submit-hook",

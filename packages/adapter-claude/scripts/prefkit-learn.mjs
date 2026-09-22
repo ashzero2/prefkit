@@ -33,10 +33,22 @@ export function parseUserPromptSubmitInput(value) {
   };
 }
 
+const preferencePattern =
+  /\b(?:remember|save this|store this|note that|i prefer|i like|i usually|i generally|my preference|from now on|going forward|in future|next time|i(?:'|’)d rather|i would rather|i told you|as i said|like i said|why did you)\b/i;
+const instructionVerbs =
+  "use|prefer|do|write|add|include|avoid|format|name|test|run|commit|install|import|sort|order|keep|set|call|return|document|answer|respond|give|provide|show|explain|summarize|produce|list|pick|choose|start|stop|skip|follow|mention";
+const absolutePattern = new RegExp(`\\b(?:always|never)\\s+(?:${instructionVerbs})\\b`, "i");
+const correctionPattern = new RegExp(
+  `(?:^|\\b)(?:no[,.!\\s]+(?:use|do|don'?t|please|that|i meant|we should|not that)|not that\\b|instead\\b|rather than\\b|use .{1,50} instead\\b|don'?t\\s+(?:${instructionVerbs})\\b|do not\\s+(?:${instructionVerbs})\\b|stop doing\\b)`,
+  "i",
+);
+const hedgedPattern = /\b(?:this once|just this once|only this time|just for now|for now|today only)\b/i;
+
 export function shouldQueuePrompt(prompt) {
-  return /\b(?:remember|save this|store this|note that|i prefer|i like|i usually|i generally|my preference|from now on|going forward|in future|next time|always|never|i(?:'|’)d rather|i would rather|i told you|as i said|like i said|why did you)\b/i.test(
-    prompt,
-  ) || /(?:^|\b)(?:no(?:[,\.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(prompt);
+  if (hedgedPattern.test(prompt)) {
+    return false;
+  }
+  return preferencePattern.test(prompt) || absolutePattern.test(prompt) || correctionPattern.test(prompt);
 }
 
 export function buildLearnerEvent(input, env = process.env) {
@@ -47,7 +59,7 @@ export function buildLearnerEvent(input, env = process.env) {
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     eventType: classifyEventType(prompt),
     userPrompt: prompt,
-    assistantSummary: "Claude Code captured this user prompt before model dispatch.",
+    assistantSummary: "",
     repoContext: {},
     metadata: {
       source: "claude-user-prompt-submit-hook",
@@ -178,7 +190,7 @@ function classifyEventType(prompt) {
   if (/\b(?:remember|save this|store this|note that)\b/i.test(prompt)) {
     return "explicit_memory";
   }
-  if (/(?:^|\b)(?:no[,\.\s]|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i.test(prompt)) {
+  if (correctionPattern.test(prompt)) {
     return "explicit_correction";
   }
   return "user_prompt";

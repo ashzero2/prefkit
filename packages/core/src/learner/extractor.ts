@@ -19,6 +19,14 @@ export type PreferenceExtractionStatus =
   | "invalid_model_output"
   | "extracted";
 
+export interface CandidatePreferenceContext {
+  id: string;
+  statement: string;
+  scopeType: string;
+  scopeValue?: string | null;
+  confidence: number;
+}
+
 export interface PreferenceExtractionOptions {
   learning: Pick<
     LearningConfig,
@@ -30,6 +38,7 @@ export interface PreferenceExtractionOptions {
   existingPositiveEvidence?: number;
   repeatedAcrossRepositories?: boolean;
   userPinned?: boolean;
+  existingPreferences?: CandidatePreferenceContext[];
 }
 
 export interface PreferenceExtractionSuccess {
@@ -67,6 +76,7 @@ interface PromptPacket {
   assistantSummary: string;
   repoContext: Record<string, unknown>;
   metadata: Record<string, unknown>;
+  existingPreferences?: CandidatePreferenceContext[];
 }
 
 const systemPrompt = [
@@ -77,6 +87,7 @@ const systemPrompt = [
   "Use global scope for reusable guidance that applies to future similar tasks; use task scope only for one current task and set scopeValue to the exact sessionId from the evidence packet.",
   "Never invent a task label as scopeValue. Guidance for a type of task is reusable guidance, not a single-task preference.",
   "If the evidence is situational, ambiguous, or not user-originated, set shouldLearn to false.",
+  "If existingPreferences are provided in the evidence packet and the user prompt updates, tightens, or contradicts one of those existing preferences, emit that contradiction with action 'supersede_existing' using its exact preferenceId from existingPreferences. Never invent random preference IDs.",
 ].join(" ");
 
 export async function extractPreference(
@@ -108,7 +119,7 @@ export async function extractPreference(
     };
   }
 
-  const prompt = buildExtractorPrompt(redacted.event);
+  const prompt = buildExtractorPrompt(redacted.event, options.existingPreferences);
   const promptTokenEstimate = estimateTokens(prompt.messages.map((message) => message.content).join("\n"));
   if (promptTokenEstimate > options.localModel.maxInputTokens) {
     return {
@@ -200,7 +211,10 @@ export async function extractPreference(
   };
 }
 
-function buildExtractorPrompt(event: LearnerEvent): { messages: Array<{ role: "system" | "user"; content: string }> } {
+function buildExtractorPrompt(
+  event: LearnerEvent,
+  existingPreferences?: CandidatePreferenceContext[],
+): { messages: Array<{ role: "system" | "user"; content: string }> } {
   const packet: PromptPacket = {
     agent: event.agent,
     eventType: event.eventType,
@@ -210,6 +224,7 @@ function buildExtractorPrompt(event: LearnerEvent): { messages: Array<{ role: "s
     metadata: event.metadata,
     ...(event.cwd === undefined ? {} : { cwd: event.cwd }),
     ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
+    ...(existingPreferences && existingPreferences.length > 0 ? { existingPreferences } : {}),
   };
 
   return {

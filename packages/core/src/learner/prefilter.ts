@@ -33,6 +33,9 @@ interface PhraseSignal {
 
 const defaultThreshold = 3;
 
+const instructionVerbs =
+  "use|prefer|do|write|add|include|avoid|format|name|test|run|commit|install|import|sort|order|keep|set|call|return|document|answer|respond|give|provide|show|explain|summarize|produce|list|pick|choose|start|stop|skip|follow|mention";
+
 const phraseSignals: PhraseSignal[] = [
   {
     code: "remember-request",
@@ -54,22 +57,36 @@ const phraseSignals: PhraseSignal[] = [
   },
   {
     code: "absolute-guidance",
-    description: "The user used always/never style guidance.",
+    description: "The user paired always/never with an instruction.",
     weight: 4,
+    pattern: new RegExp(`\\b(?:always|never)\\s+(?:${instructionVerbs})\\b`, "i"),
+  },
+  {
+    code: "absolute-language",
+    description: "The user used always/never; only counts alongside a stronger signal.",
+    weight: 2,
     pattern: /\b(?:always|never)\b/i,
   },
   {
     code: "direct-correction",
     description: "The user directly corrected a prior choice.",
     weight: 3,
-    pattern:
-      /(?:^|\b)(?:no(?:[,.\s]|$)|not that\b|instead\b|rather than\b|use .{1,50} instead\b|don'?t\b|do not\b|stop doing\b)/i,
+    pattern: new RegExp(
+      `(?:^|\\b)(?:no[,.!\\s]+(?:use|do|don'?t|please|that|i meant|we should|not that)|not that\\b|instead\\b|rather than\\b|use .{1,50} instead\\b|don'?t\\s+(?:${instructionVerbs})\\b|do not\\s+(?:${instructionVerbs})\\b|stop doing\\b)`,
+      "i",
+    ),
   },
   {
     code: "prior-guidance-reference",
     description: "The user referred to a previous instruction being missed.",
     weight: 3,
     pattern: /\b(?:i told you|as i said|like i said|why did you)\b/i,
+  },
+  {
+    code: "hedged-one-off",
+    description: "The user framed the request as a one-off, so it is not durable guidance.",
+    weight: -4,
+    pattern: /\b(?:this once|just this once|only this time|just for now|for now|today only)\b/i,
   },
 ];
 

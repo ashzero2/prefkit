@@ -40,6 +40,71 @@
     "expectedShouldExtract": true
   },
   {
+    "name": "bare no is not a learning signal",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "no",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": false
+  },
+  {
+    "name": "dismissive no worries is not a correction",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "No worries, take your time.",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": false
+  },
+  {
+    "name": "bare never is only a booster",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "I never knew that.",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": false
+  },
+  {
+    "name": "one-off absolute guidance is not durable",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "always run the tests this once",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": false
+  },
+  {
+    "name": "framed absolute guidance reaches learning gate",
+    "kind": "prefilter",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "Always use pnpm.",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "expectedShouldExtract": true
+  },
+  {
     "name": "contradictory extraction remains reviewable",
     "kind": "confidence",
     "event": {

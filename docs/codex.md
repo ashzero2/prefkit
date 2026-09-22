@@ -11,6 +11,8 @@ Codex prompt
 
 Codex's documented hook contract lets `UserPromptSubmit` return JSON with `hookSpecificOutput.additionalContext` (plain-text stdout works too). `matcher` is ignored for this event. Command hooks can run with `async: true` in the background; background hooks cannot block, so the adapter keeps retrieval (sync) and learning (async) in separate handlers. See the [hooks reference](https://developers.openai.com/codex/hooks).
 
+`UserPromptSubmit` exposes the user prompt only, so learning events carry an empty `assistantSummary` and corrections are detected from the user's wording (see [events.md](events.md#signal-gating)). Codex also exposes a `Stop` hook; assistant-turn capture is not wired up yet.
+
 ## Install
 
 The reliable install target is the user-layer hooks file. Plugin-bundled hooks use the same trust flow but do not execute on every surface (notably Codex Desktop), so prefer this:

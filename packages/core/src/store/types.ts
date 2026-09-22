@@ -50,6 +50,11 @@ export interface ImportReport {
   conflicts: number;
 }
 
+export interface EvidenceStats {
+  positiveCount: number;
+  distinctCwds: number;
+}
+
 export interface PreferenceStats {
   preferences: {
     total: number;
@@ -84,6 +89,29 @@ export interface CorrectionMetricInput {
   sessionId?: string | null;
 }
 
+export interface EvaluationOutcomeInput {
+  sessionId: string;
+  correctionObserved: boolean;
+  /** Required only when no context exposure was recorded for the session. */
+  contextInjected?: boolean;
+}
+
+export interface EvaluationGroup {
+  sessions: number;
+  corrections: number;
+  correctionRate: number | null;
+}
+
+export interface OutcomeEvaluation {
+  status: "ready" | "insufficient_data";
+  completedSessions: number;
+  openSessions: number;
+  withContext: EvaluationGroup;
+  withoutContext: EvaluationGroup;
+  absoluteRateDifference: number | null;
+  relativeRateDifference: number | null;
+}
+
 export interface RememberPreferenceInput {
   statement: string;
   scopeType?: ScopeType;
@@ -93,6 +121,8 @@ export interface RememberPreferenceInput {
   confidence?: number;
   status?: PreferenceStatus;
   source?: string;
+  /** Revives an existing suppressed or rejected rule instead of leaving it inactive. */
+  reactivate?: boolean;
   /** Proposed predecessor; applied only when this candidate is accepted. */
   supersedesId?: string | null;
   evidence?: {
@@ -110,7 +140,10 @@ export interface RememberPreferenceInput {
 export interface ListPreferencesOptions {
   includeInactive?: boolean;
   status?: PreferenceStatus;
+  scope?: ScopeType;
+  scopeValue?: string;
   limit?: number;
+  offset?: number;
 }
 
 export interface PreferenceStore {
@@ -119,10 +152,20 @@ export interface PreferenceStore {
   backup(destination: string): Promise<void>;
   remember(input: RememberPreferenceInput): PreferenceWithEvidence;
   list(options?: ListPreferencesOptions): PreferenceRecord[];
+  count(options?: ListPreferencesOptions): number;
   search(options: PreferenceSearchOptions): PreferenceSearchResult[];
   get(id: string): PreferenceWithEvidence | null;
+  findByStatement(
+    normalizedStatement: string,
+    scopeType: ScopeType,
+    scopeValue?: string | null,
+  ): PreferenceWithEvidence | null;
+  countPositiveEvidence(preferenceId: string): number;
+  getEvidenceStats(preferenceId: string): EvidenceStats;
   recordContext(input: ContextMetricInput): void;
   recordCorrection(input: CorrectionMetricInput): boolean;
+  recordEvaluationOutcome(input: EvaluationOutcomeInput): void;
+  evaluateOutcomes(): OutcomeEvaluation;
   stats(): PreferenceStats;
   pin(id: string): PreferenceRecord | null;
   forget(id: string): PreferenceRecord | null;

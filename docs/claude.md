@@ -11,6 +11,8 @@ Claude prompt
 
 Claude's documented hook contract allows `UserPromptSubmit` to return JSON with `hookSpecificOutput.additionalContext`. Command hooks can also run asynchronously; async hooks cannot modify the prompt, so the adapter keeps retrieval and learning in separate handlers. See the [hooks reference](https://code.claude.com/docs/en/hooks) and [plugin reference](https://code.claude.com/docs/en/plugins-reference).
 
+`UserPromptSubmit` exposes the user prompt only, so learning events carry an empty `assistantSummary` and corrections are detected from the user's wording (see [events.md](events.md#signal-gating)).
+
 ## Local Test
 
 Install the CLI and run Claude Code with the plugin directory:

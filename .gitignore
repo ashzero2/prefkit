@@ -45,5 +45,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local agent tooling state
+.commandcode/
+.opencode/
+
 # Planning scratch files
 plans/
