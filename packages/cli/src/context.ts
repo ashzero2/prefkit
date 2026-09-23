@@ -1,4 +1,5 @@
 import {
+  contextReminderHeader,
   createPreferenceStore,
   renderPreferenceContext,
   storeExists,
@@ -24,6 +25,7 @@ export function runContextCommand(args: ParsedArgs, loadResult: ConfigLoadResult
       cwd: flagOne(args, "cwd") ?? process.cwd(),
       limit: parseNumberFlag(flagOne(args, "limit"), loadResult.config.injection.maxRules),
       minConfidence: parseNumberFlag(flagOne(args, "min-confidence"), loadResult.config.injection.minConfidence),
+      usageHalfLifeDays: loadResult.config.injection.usageHalfLifeDays,
     };
     const searchPath = flagOne(args, "path");
     if (searchPath !== undefined) {
@@ -39,9 +41,11 @@ export function runContextCommand(args: ParsedArgs, loadResult: ConfigLoadResult
     }
 
     const results = store.search(searchOptions);
+    const includeHeader = args.flags.has("with-header") || loadResult.config.injection.includeHeader;
     const rendered = renderPreferenceContext(results, {
       injection: loadResult.config.injection,
       includeWhy: args.flags.has("why"),
+      ...(includeHeader ? { header: contextReminderHeader } : {}),
     });
     if (loadResult.config.metrics.enabled) {
       store.recordContext({

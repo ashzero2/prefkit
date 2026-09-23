@@ -668,6 +668,33 @@ describe("SqlitePreferenceStore", () => {
       store.close();
     }
   });
+
+  it("records reuse and applies the usage boost when enabled", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const rule = store.remember({ statement: "Prefer pnpm for JavaScript projects.", category: "tooling" });
+
+      for (let index = 0; index < 2; index += 1) {
+        store.recordContext({
+          matchedRules: 1,
+          injectedRules: 1,
+          tokenEstimate: 12,
+          injectedPreferenceIds: [rule.preference.id],
+        });
+      }
+
+      const prompt = "pnpm javascript";
+      const plain = store.search({ prompt, limit: 5 });
+      const boosted = store.search({ prompt, limit: 5, usageHalfLifeDays: 30 });
+      const scoreOf = (results: { preference: { id: string }; score: number }[]): number =>
+        results.find((result) => result.preference.id === rule.preference.id)?.score ?? 0;
+
+      expect(scoreOf(boosted)).toBeGreaterThan(scoreOf(plain));
+      expect(boosted.find((result) => result.preference.id === rule.preference.id)?.reasons).toContain("reused 2\u00d7");
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function testStoreConfig(): StoreConfig {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resultReasons, scopeMatch, scorePreference, searchableText } from "../../src/retrieval/rank.js";
+import { resultReasons, scopeMatch, scorePreference, searchableText, usageBoost } from "../../src/retrieval/rank.js";
 import type { PreferenceRecord } from "../../src/store/types.js";
 
 function preference(overrides: Partial<PreferenceRecord> = {}): PreferenceRecord {
@@ -66,5 +66,19 @@ describe("retrieval ranking", () => {
 
   it("searches statement, category and tags", () => {
     expect(searchableText(preference())).toBe("Prefer pnpm. tooling js");
+  });
+
+  it("boosts recent reuse and decays it on the half-life", () => {
+    const now = Date.parse("2026-01-11T00:00:00.000Z");
+    const fresh = { useCount: 3, lastInjectedAt: "2026-01-10T00:00:00.000Z" };
+    const stale = { useCount: 3, lastInjectedAt: "2025-12-01T00:00:00.000Z" };
+
+    expect(usageBoost(undefined, 30, now)).toBe(0);
+    expect(usageBoost(fresh, 0, now)).toBe(0);
+
+    const freshBoost = usageBoost(fresh, 30, now);
+    expect(freshBoost).toBeGreaterThan(0);
+    expect(freshBoost).toBeLessThanOrEqual(0.1);
+    expect(usageBoost(stale, 30, now)).toBeLessThan(freshBoost);
   });
 });

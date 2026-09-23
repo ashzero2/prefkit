@@ -36,6 +36,8 @@ export const defaultConfig: PrefKitConfig = {
     maxTokens: 700,
     includeWhy: false,
     minConfidence: 0.45,
+    includeHeader: false,
+    usageHalfLifeDays: 0,
   },
   metrics: {
     enabled: false,

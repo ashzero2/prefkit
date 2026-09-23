@@ -41,6 +41,10 @@ export interface InjectionConfig {
   maxTokens: number;
   includeWhy: boolean;
   minConfidence: number;
+  /** Prepend a "apply these preferences" reminder before the rule list. */
+  includeHeader: boolean;
+  /** Half-life in days for the retrieval usage boost. 0 disables it. */
+  usageHalfLifeDays: number;
 }
 
 export interface MetricsConfig {

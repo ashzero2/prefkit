@@ -112,7 +112,7 @@ Usage:
   prefkit export --format markdown|json
   prefkit import --input ./prefkit-export.json
   prefkit backup --output ./backups/prefs.db
-  prefkit context --prompt "I need to name an app"
+  prefkit context --prompt "I need to name an app" [--why] [--with-header]
   prefkit learn --event-file event.json [--persist]
   prefkit queue --stdin-json [--queue-dir ~/.prefkit/queue]
   prefkit replay [--queue-dir ~/.prefkit/queue] [--persist] [--limit 100] [--max-attempts 3]

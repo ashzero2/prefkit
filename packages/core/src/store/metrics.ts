@@ -128,6 +128,19 @@ export function recordContext(ctx: StoreContext, input: ContextMetricInput): voi
         )
         .run(maxContextExposures);
     }
+    if (preferenceIds.length > 0) {
+      const recordUsage = ctx.db.prepare(
+        `INSERT INTO preference_usage (preference_id, use_count, last_injected_at)
+         SELECT ?, 1, ?
+         WHERE EXISTS (SELECT 1 FROM preferences WHERE id = ?)
+         ON CONFLICT(preference_id) DO UPDATE SET use_count = preference_usage.use_count + 1,
+                                                 last_injected_at = excluded.last_injected_at`,
+      );
+      const now = new Date().toISOString();
+      for (const preferenceId of preferenceIds) {
+        recordUsage.run(preferenceId, now, preferenceId);
+      }
+    }
   });
   record();
 }

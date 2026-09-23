@@ -11,6 +11,8 @@ export interface PreferenceSearchOptions {
   minConfidence?: number;
   statuses?: PreferenceStatus[];
   scopeAgnostic?: boolean;
+  /** Half-life in days for the reuse boost; 0 disables it. */
+  usageHalfLifeDays?: number;
 }
 
 export interface PreferenceSearchResult {
@@ -22,6 +24,8 @@ export interface PreferenceSearchResult {
 export interface ContextRenderOptions {
   injection: InjectionConfig;
   includeWhy?: boolean;
+  /** Replaces the default "Relevant user preferences:" header. */
+  header?: string;
 }
 
 export interface RenderedContext {

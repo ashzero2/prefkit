@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createPreferenceStore, renderPreferenceContext, type StoreConfig } from "../../src/index.js";
+import { contextReminderHeader, createPreferenceStore, renderPreferenceContext, type StoreConfig } from "../../src/index.js";
 
 describe("retrieval and context rendering", () => {
   it("retrieves prompt-relevant preferences and excludes suppressed records", () => {
@@ -92,6 +92,8 @@ describe("retrieval and context rendering", () => {
           maxTokens: 45,
           includeWhy: false,
           minConfidence: 0.45,
+          includeHeader: false,
+          usageHalfLifeDays: 0,
         },
       });
 
@@ -122,6 +124,8 @@ describe("retrieval and context rendering", () => {
           maxTokens: 700,
           includeWhy: false,
           minConfidence: 0.45,
+          includeHeader: false,
+          usageHalfLifeDays: 0,
         },
       };
 
@@ -171,6 +175,31 @@ describe("retrieval and context rendering", () => {
 
       expect(ids).toContain(scoped.preference.id);
       expect(ids).not.toContain(other.preference.id);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("replaces the default header with the reminder when requested", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      store.remember({ statement: "Prefer elegant professional product names.", category: "naming" });
+
+      const results = store.search({ prompt: "elegant product names", limit: 5 });
+      const rendered = renderPreferenceContext(results, {
+        injection: {
+          maxRules: 8,
+          maxTokens: 700,
+          includeWhy: false,
+          minConfidence: 0.45,
+          includeHeader: false,
+          usageHalfLifeDays: 0,
+        },
+        header: contextReminderHeader,
+      });
+
+      expect(rendered.text.startsWith(contextReminderHeader)).toBe(true);
+      expect(rendered.text).not.toContain("Relevant user preferences:");
     } finally {
       store.close();
     }

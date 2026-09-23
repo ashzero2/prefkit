@@ -70,6 +70,8 @@ Loaded in precedence order, highest first:
 
 Common variables: `PREFKIT_STORE`, `PREFKIT_LEARNER`, `PREFKIT_OLLAMA_BASE_URL`, `PREFKIT_OLLAMA_MODEL`, `PREFKIT_MODEL_TEMPERATURE`, `PREFKIT_MODEL_TIMEOUT_MS`, `PREFKIT_WORKER_POLL_MS`, `PREFKIT_WORKER_BATCH_SIZE`, `PREFKIT_QUEUE_MAX_ATTEMPTS`, `PREFKIT_REDACT_SECRETS`. See [.prefkit.example.json](.prefkit.example.json) for every setting.
 
+Two retrieval options are worth knowing: `injection.includeHeader` (prepend "Apply the following stored preferences to this task:"; `prefkit context --with-header` forces it for one call) and `injection.usageHalfLifeDays` (0 disables; a recently reused rule ranks slightly higher and that boost decays on the half-life — it never removes or demotes a rule).
+
 Adapters expect `prefkit` on `PATH`; set `PREFKIT_COMMAND` / `PREFKIT_ARGS` to use a wrapper such as `pnpm`.
 
 ## Architecture

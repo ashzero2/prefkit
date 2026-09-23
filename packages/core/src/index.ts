@@ -76,7 +76,7 @@ export type {
   RedactionKind,
   RedactionOptions,
 } from "./redaction/types.js";
-export { renderPreferenceContext, estimateTokens } from "./formatting/context.js";
+export { renderPreferenceContext, estimateTokens, contextReminderHeader } from "./formatting/context.js";
 export { ftsQuery, lexicalOverlap, queryTerms } from "./retrieval/query.js";
 export type {
   ContextRenderOptions,

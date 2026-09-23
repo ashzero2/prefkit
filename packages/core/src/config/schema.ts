@@ -41,6 +41,8 @@ export const injectionConfigSchema = z.object({
   maxTokens: z.number().int().positive(),
   includeWhy: z.boolean(),
   minConfidence: z.number().min(0).max(1),
+  includeHeader: z.boolean(),
+  usageHalfLifeDays: z.number().nonnegative(),
 });
 
 export const metricsConfigSchema = z.object({

@@ -80,6 +80,7 @@ export function recallPreferences(
     cwd: args.cwd ?? process.cwd(),
     limit,
     minConfidence: injection.minConfidence,
+    usageHalfLifeDays: injection.usageHalfLifeDays,
     ...(args.agent === undefined ? {} : { agent: args.agent }),
     ...(args.session === undefined ? {} : { sessionId: args.session }),
   });

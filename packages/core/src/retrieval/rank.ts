@@ -129,6 +129,25 @@ export function searchableText(preference: PreferenceRecord): string {
   return [preference.statement, preference.category, ...preference.tags].join(" ");
 }
 
+export interface PreferenceUsage {
+  useCount: number;
+  lastInjectedAt: string | null;
+}
+
+const dayMs = 86_400_000;
+
+export function usageBoost(usage: PreferenceUsage | undefined, halfLifeDays: number, now: number): number {
+  if (usage === undefined || usage.lastInjectedAt === null || halfLifeDays <= 0) {
+    return 0;
+  }
+  const last = Date.parse(usage.lastInjectedAt);
+  if (!Number.isFinite(last)) {
+    return 0;
+  }
+  const days = Math.max(0, (now - last) / dayMs);
+  return 0.1 * Math.pow(0.5, days / halfLifeDays);
+}
+
 export function rankField(row: Record<string, unknown>): number | null {
   const value = row.fts_rank;
   return typeof value === "number" ? value : null;

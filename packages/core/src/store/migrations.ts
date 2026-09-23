@@ -138,4 +138,16 @@ export const migrations: Migration[] = [
       DROP TABLE IF EXISTS events;
     `,
   },
+  {
+    id: 6,
+    name: "preference-usage",
+    sql: `
+      CREATE TABLE IF NOT EXISTS preference_usage (
+        preference_id TEXT PRIMARY KEY,
+        use_count INTEGER NOT NULL DEFAULT 0,
+        last_injected_at TEXT,
+        FOREIGN KEY (preference_id) REFERENCES preferences(id) ON DELETE CASCADE
+      );
+    `,
+  },
 ];

@@ -1,6 +1,7 @@
 import type { ContextRenderOptions, PreferenceSearchResult, RenderedContext } from "../retrieval/types.js";
 
-const header = "Relevant user preferences:";
+const defaultHeader = "Relevant user preferences:";
+export const contextReminderHeader = "Apply the following stored preferences to this task:";
 
 export function renderPreferenceContext(
   results: PreferenceSearchResult[],
@@ -11,7 +12,7 @@ export function renderPreferenceContext(
   const includeWhy = options.includeWhy ?? options.injection.includeWhy;
   const included: PreferenceSearchResult[] = [];
   const omitted: PreferenceSearchResult[] = [];
-  const lines = [header];
+  const lines = [options.header ?? defaultHeader];
 
   for (const result of results) {
     if (included.length >= maxRules) {

@@ -44,6 +44,7 @@ const booleanFlags = new Set([
   "persist",
   "once",
   "why",
+  "with-header",
   "write",
   "stdin-json",
   "queue-weak-events",
