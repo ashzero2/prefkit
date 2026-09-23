@@ -1,6 +1,6 @@
 {
   "name": "prefkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Injects relevant PrefKit preferences into Codex prompts.",
   "hooks": "./hooks/hooks.json",
   "author": {
