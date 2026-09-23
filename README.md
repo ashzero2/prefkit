@@ -138,6 +138,8 @@ pnpm build:packages   # dist for publishable packages
 
 Tests resolve workspace packages from `src` via `vitest.config.ts` aliases and `tsconfig.base.json` paths. CI runs `typecheck`, `test`, `build:packages`, and `pack --dry-run` for each package.
 
+Release notes are in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
