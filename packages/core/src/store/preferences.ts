@@ -98,6 +98,7 @@ export function rememberPreference(ctx: StoreContext, input: RememberPreferenceI
     );
     const revivedStatus =
       input.reactivate === true && isRevivableStatus(targetPref.status) ? input.status ?? "active" : null;
+    const mergedMetadata = { ...targetPref.metadata, ...(input.metadata ?? {}) };
 
     ctx.db.transaction(() => {
       insertEvidence(ctx, targetEvidence);
@@ -107,10 +108,11 @@ export function rememberPreference(ctx: StoreContext, input: RememberPreferenceI
            SET updated_at = ?,
                last_seen_at = ?,
                confidence = ?,
-               status = COALESCE(?, status)
+               status = COALESCE(?, status),
+               metadata_json = ?
            WHERE id = ?`,
         )
-        .run(now, now, newConfidence, revivedStatus, targetPref.id);
+        .run(now, now, newConfidence, revivedStatus, JSON.stringify(mergedMetadata), targetPref.id);
     })();
 
     const updated = getPreference(ctx, targetPref.id);
@@ -228,6 +230,17 @@ export function countPositiveEvidence(ctx: StoreContext, preferenceId: string): 
     .prepare(
       `SELECT COUNT(*) AS count FROM evidence
        WHERE preference_id = ? AND polarity = 'positive'`,
+    )
+    .get(preferenceId) as Row | undefined;
+  return row === undefined ? 0 : numberField(row, "count");
+}
+
+export function countDistinctSessions(ctx: StoreContext, preferenceId: string): number {
+  ctx.ensureSchema();
+  const row = ctx.db
+    .prepare(
+      `SELECT COUNT(DISTINCT session_id) AS count FROM evidence
+       WHERE preference_id = ? AND session_id IS NOT NULL`,
     )
     .get(preferenceId) as Row | undefined;
   return row === undefined ? 0 : numberField(row, "count");

@@ -669,6 +669,51 @@ describe("SqlitePreferenceStore", () => {
     }
   });
 
+  it("counts distinct evidence sessions per preference", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const rule = store.remember({
+        statement: "Prefer pnpm for JavaScript work.",
+        evidence: { sessionId: "session-a", summary: "First observation." },
+      });
+      store.remember({
+        statement: "Prefer pnpm for JavaScript work.",
+        evidence: { sessionId: "session-b", summary: "Second observation." },
+      });
+      store.remember({
+        statement: "Prefer pnpm for JavaScript work.",
+        evidence: { sessionId: "session-a", summary: "Repeat in the first session." },
+      });
+
+      expect(store.countDistinctSessions(rule.preference.id)).toBe(2);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("merges metadata when a duplicate statement is re-remembered", () => {
+    const store = createPreferenceStore(testStoreConfig());
+    try {
+      const first = store.remember({
+        statement: "Prefer pnpm for this monorepo.",
+        metadata: { origin: "cli" },
+      });
+      const second = store.remember({
+        statement: "Prefer pnpm for this monorepo.",
+        evidence: { summary: "A later observation restated the rule." },
+        metadata: { needsReviewReason: "unresolved-contradiction" },
+      });
+
+      expect(second.preference.id).toBe(first.preference.id);
+      expect(second.preference.metadata).toMatchObject({
+        origin: "cli",
+        needsReviewReason: "unresolved-contradiction",
+      });
+    } finally {
+      store.close();
+    }
+  });
+
   it("records reuse and applies the usage boost when enabled", () => {
     const store = createPreferenceStore(testStoreConfig());
     try {

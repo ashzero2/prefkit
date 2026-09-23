@@ -161,6 +161,7 @@ export interface PreferenceStore {
     scopeValue?: string | null,
   ): PreferenceWithEvidence | null;
   countPositiveEvidence(preferenceId: string): number;
+  countDistinctSessions(preferenceId: string): number;
   getEvidenceStats(preferenceId: string): EvidenceStats;
   recordContext(input: ContextMetricInput): void;
   recordCorrection(input: CorrectionMetricInput): boolean;

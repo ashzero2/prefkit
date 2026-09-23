@@ -141,4 +141,47 @@ describe("persistLearnResult", () => {
       store.close();
     }
   });
+
+  it("marks a preference repeated across earlier sessions", () => {
+    const { event, extraction } = fixture();
+    const store = createPreferenceStore({
+      path: join(mkdtempSync(join(tmpdir(), "prefkit-learn-")), "prefs.db"),
+      wal: false,
+      busyTimeoutMs: 1000,
+    });
+
+    try {
+      for (const sessionId of ["session-a", "session-b"]) {
+        store.remember({
+          statement,
+          scopeType: "repository",
+          scopeValue: "/repo",
+          evidence: { sessionId, summary: `Observation in ${sessionId}.` },
+        });
+      }
+
+      const result: PreferenceExtractionResult = {
+        ok: true,
+        status: "extracted",
+        model: "test",
+        event,
+        redactions: [],
+        prefilter: { shouldExtract: true, score: 6, threshold: 3, reasons: [] },
+        extraction,
+        confidence: calculatePreferenceConfidence({ event, extraction }),
+        promptTokenEstimate: 10,
+      };
+
+      const persisted = persistLearnResult(result, store, {
+        globalPromotionThreshold: 8,
+        requireConfirmationForGlobal: true,
+      });
+      const metadata = persisted?.preference.metadata as Record<string, unknown>;
+
+      expect(metadata.priorDistinctSessions).toBe(2);
+      expect(metadata.repeatedAcrossSessions).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
 });

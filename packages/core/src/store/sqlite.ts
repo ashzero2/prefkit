@@ -14,6 +14,7 @@ import {
 } from "./metrics.js";
 import { migrations } from "./migrations.js";
 import {
+  countDistinctSessions as countDistinctSessionsFor,
   countPositiveEvidence as countPositiveEvidenceFor,
   countPreferences,
   findPreferenceByStatement,
@@ -99,6 +100,10 @@ export class SqlitePreferenceStore implements PreferenceStore {
 
   countPositiveEvidence(preferenceId: string): number {
     return countPositiveEvidenceFor(this.ctx, preferenceId);
+  }
+
+  countDistinctSessions(preferenceId: string): number {
+    return countDistinctSessionsFor(this.ctx, preferenceId);
   }
 
   getEvidenceStats(preferenceId: string): EvidenceStats {

@@ -18,6 +18,7 @@ export interface ConfidenceInput {
   extraction: ExtractorOutput;
   existingPositiveEvidence?: number;
   repeatedAcrossRepositories?: boolean;
+  repeatedAcrossSessions?: boolean;
   userPinned?: boolean;
   options?: Partial<ConfidenceOptions>;
 }
@@ -79,6 +80,7 @@ export function calculatePreferenceConfidence(input: ConfidenceInput): Confidenc
     ...extractorReasons(input.extraction),
     ...scopeReasons(input.extraction, input.event, input.repeatedAcrossRepositories),
     ...repeatReasons(input.existingPositiveEvidence),
+    ...sessionRepeatReasons(input.repeatedAcrossSessions),
     ...contradictionReasons(input.extraction),
   ];
   const evidenceWeight = clampWeight(reasons.reduce((total, reason) => total + reason.weight, 0));
@@ -223,6 +225,20 @@ function repeatReasons(existingPositiveEvidence: number | undefined): Confidence
   ];
 }
 
+function sessionRepeatReasons(repeatedAcrossSessions: boolean | undefined): ConfidenceReason[] {
+  if (repeatedAcrossSessions !== true) {
+    return [];
+  }
+
+  return [
+    {
+      code: "repeated-across-sessions",
+      description: "The same preference has evidence from multiple earlier sessions.",
+      weight: 2,
+    },
+  ];
+}
+
 function contradictionReasons(extraction: ExtractorOutput): ConfidenceReason[] {
   if (extraction.contradictions.length === 0) {
     return [];
@@ -255,7 +271,8 @@ function needsUserConfirmation(
       hasGlobalWording(input.event.userPrompt) || input.repeatedAcrossRepositories === true;
     const hasRepeatedEvidence =
       (input.existingPositiveEvidence !== undefined && input.existingPositiveEvidence >= 1) ||
-      input.repeatedAcrossRepositories === true;
+      input.repeatedAcrossRepositories === true ||
+      input.repeatedAcrossSessions === true;
     return !hasPromotionEvidence || !hasRepeatedEvidence || evidenceWeight < options.globalPromotionThreshold;
   }
 

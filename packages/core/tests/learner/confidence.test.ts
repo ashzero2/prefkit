@@ -167,6 +167,18 @@ describe("preference confidence", () => {
     expect(decision.evidenceWeight).toBe(4);
     expect(decision.reasons.map((reason) => reason.code)).toContain("contradiction-penalty");
   });
+
+  it("credits evidence repeated across earlier sessions", () => {
+    const without = calculatePreferenceConfidence({ event: event(), extraction: extraction() });
+    const withSessions = calculatePreferenceConfidence({
+      event: event(),
+      extraction: extraction(),
+      repeatedAcrossSessions: true,
+    });
+
+    expect(withSessions.reasons.map((reason) => reason.code)).toContain("repeated-across-sessions");
+    expect(withSessions.evidenceWeight).toBe(without.evidenceWeight + 2);
+  });
 });
 
 function event(input: Partial<LearnerEvent> = {}): LearnerEvent {

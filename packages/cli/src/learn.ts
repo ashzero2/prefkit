@@ -90,13 +90,16 @@ export function persistLearnResult(
   );
 
   let confidence = result.confidence;
+  let priorDistinctSessions: number | undefined;
   if (existing !== null) {
     const evidenceStats = store.getEvidenceStats(existing.preference.id);
+    priorDistinctSessions = store.countDistinctSessions(existing.preference.id);
     confidence = calculatePreferenceConfidence({
       event: result.event,
       extraction: result.extraction,
       existingPositiveEvidence: evidenceStats.positiveCount,
       repeatedAcrossRepositories: evidenceStats.distinctCwds > 1,
+      repeatedAcrossSessions: priorDistinctSessions >= 2,
       options: {
         globalPromotionThreshold: learning.globalPromotionThreshold,
         requireConfirmationForGlobal: learning.requireConfirmationForGlobal,
@@ -133,6 +136,9 @@ export function persistLearnResult(
       contradictions: result.extraction.contradictions,
       confidenceReasons: confidence.reasons.map((reason) => reason.code),
       signalReasons: result.prefilter.reasons.map((reason) => reason.code),
+      ...(priorDistinctSessions === undefined
+        ? {}
+        : { priorDistinctSessions, repeatedAcrossSessions: priorDistinctSessions >= 2 }),
       ...(unresolvedContradiction ? { needsReviewReason: "unresolved-contradiction" } : {}),
     },
     ...(supersedingContradiction === undefined ? {} : { supersedesId: supersedingContradiction.preferenceId }),

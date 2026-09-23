@@ -70,6 +70,8 @@ The deterministic gate decides whether an event is worth a model call. It is del
 
 A model-proposed supersession is only applied when its `preferenceId` matches a candidate rule that was supplied in the extraction packet. Otherwise the rule is stored as a candidate with `metadata.needsReviewReason = "unresolved-contradiction"` and no supersession link, so a hallucinated id can never retire a real preference. `prefkit review` only accepts candidates.
 
+Repeating the same preference across sessions is credited separately from repeating it within one: once a rule already has evidence from two or more distinct sessions, the next observation adds a `repeated-across-sessions` reason (+2) and records `metadata.priorDistinctSessions` / `metadata.repeatedAcrossSessions`. This needs a session id on the event — adapters supply one — and because evidence dedupes on `(statement, scope, summary)`, the credit comes from restating the same preference in a new session, not from replaying a byte-identical event.
+
 ## Commands
 
 Dry-run:
