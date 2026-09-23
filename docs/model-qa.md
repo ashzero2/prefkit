@@ -85,3 +85,18 @@ For a model to be acceptable for persisted learning:
 - no fixture creates an obviously broad personality statement
 - invalid outputs are rejected, not persisted
 - persisted preferences are inspectable with `prefkit why`
+
+## Scope disambiguation
+
+Scope selection is the weakest local-model behaviour, so check it explicitly rather than trusting the fixtures alone. For each prompt, note the scope the model returned (`prefkit learn --event-file …` prints it), then compare against the intent:
+
+| Prompt shape | Intended scope | Failure to watch for |
+| --- | --- | --- |
+| "Don't research this one deeply" | task (`scopeValue` = the session id) | promoted to global |
+| "No, use pnpm in this repo" | repository | promoted to global |
+| "From now on, always use pnpm" | global (reusable) | demoted to task |
+| "For naming tasks, always give 10 options" | global (reusable) | invented task label as `scopeValue` |
+
+Run each prompt at least 5 times at `temperature: 0` and record the results. The metric to track is the **false-global rate**: the share of repository- or task-scoped prompts that came back as `global`. PrefKit's deterministic rules absorb some of this — reusable wording forces task scope to global, and global still lands as a `candidate` behind confirmation — but a high false-global rate means the model is guessing, not reading the prompt.
+
+`normalizePreferenceScope` covers the one deterministic case: task-scoped extractions whose prompt uses reusable wording are normalised to global. Everything else is a property of the model, which is why the promotion gate defaults to requiring explicit confirmation.

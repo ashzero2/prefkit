@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   calculatePreferenceConfidence,
   createPreferenceStore,
@@ -20,7 +21,7 @@ import {
 } from "@prefkit/core";
 import { flagOne, parseNumberFlag, parsePositiveIntegerFlag, type ParsedArgs } from "./args.js";
 import { archiveReplayFile, queueFiles, recordQueueFailure, writeQueueFile } from "./replay.js";
-import { runBackgroundWorker } from "./worker.js";
+import { runBackgroundWorker, workerStatus } from "./worker.js";
 
 type ConfidenceOptions = Pick<LearningConfig, "globalPromotionThreshold" | "requireConfirmationForGlobal">;
 
@@ -205,6 +206,10 @@ export async function runWorkerCommand(args: ParsedArgs, loadResult: ConfigLoadR
   const intervalMs = parsePositiveIntegerFlag(flagOne(args, "interval-ms"), loadResult.config.learning.workerPollMs);
   const batchSize = parsePositiveIntegerFlag(flagOne(args, "batch-size"), loadResult.config.learning.workerBatchSize);
 
+  if (args.positionals[0] === "status") {
+    return printWorkerStatus(queueDir, loadResult);
+  }
+
   if (!loadResult.config.learning.enabled || loadResult.config.learning.mode === "off") {
     console.log("PrefKit worker: learning is disabled.");
     return 0;
@@ -213,6 +218,16 @@ export async function runWorkerCommand(args: ParsedArgs, loadResult: ConfigLoadR
     console.log("PrefKit worker: learning mode is manual; use prefkit replay --persist.");
     return 0;
   }
+
+  const logPath = workerLogPath(loadResult);
+  const log = (message: string): void => {
+    try {
+      appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+    } catch {
+      // Worker logging must never break the worker.
+    }
+  };
+  log(`worker starting queueDir=${queueDir} intervalMs=${intervalMs} batchSize=${batchSize}`);
 
   const store = createPreferenceStore(loadResult.config.store);
   try {
@@ -230,22 +245,61 @@ export async function runWorkerCommand(args: ParsedArgs, loadResult: ConfigLoadR
           config: loadResult.config,
           maxAttempts: loadResult.config.learning.queueMaxAttempts,
         });
+        if (report.total > 0 || report.failed > 0) {
+          log(`batch total=${report.total} extracted=${report.extracted} persisted=${report.persisted} failed=${report.failed}`);
+        }
         if (args.flags.has("once") || report.total > 0) {
           printReplayReport(report);
         }
         return report;
       },
       onError: (error) => {
-        console.error(`PrefKit worker batch failed: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        log(`batch error ${message}`);
+        console.error(`PrefKit worker batch failed: ${message}`);
       },
     });
+    log(`worker ${result.status} batches=${result.batches} total=${result.total} failed=${result.failed}`);
     console.log(`PrefKit worker: ${result.status}`);
     if (result.status === "already-running") {
       console.log(`queueDir=${queueDir}`);
     }
+    console.log(`log=${logPath}`);
     return 0;
   } finally {
     store.close();
+  }
+}
+
+function printWorkerStatus(queueDir: string, loadResult: ConfigLoadResult): number {
+  const status = workerStatus(queueDir);
+  console.log("PrefKit worker status");
+  console.log(`queueDir=${queueDir}`);
+  console.log(`running=${status.running}${status.ownerPid === null ? "" : ` pid=${status.ownerPid}`}`);
+  if (status.ownerStartedAt !== null) {
+    console.log(`ownerStartedAt=${status.ownerStartedAt}`);
+  }
+  console.log(`staleLock=${status.staleLock}`);
+  console.log(
+    `pending=${countJsonFiles(queueDir)} processed=${countJsonFiles(join(queueDir, "processed"))} failed=${countJsonFiles(join(queueDir, "failed"))}`,
+  );
+  console.log(`log=${workerLogPath(loadResult)}`);
+  return 0;
+}
+
+function workerLogPath(loadResult: ConfigLoadResult): string {
+  const override = process.env.PREFKIT_WORKER_LOG?.trim();
+  if (override !== undefined && override.length > 0) {
+    return override;
+  }
+  return join(dirname(loadResult.config.store.path), "worker.log");
+}
+
+function countJsonFiles(directory: string): number {
+  try {
+    return readdirSync(directory).filter((entry) => entry.endsWith(".json")).length;
+  } catch {
+    return 0;
   }
 }
 

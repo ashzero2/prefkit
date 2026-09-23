@@ -39,7 +39,7 @@ describe("OpenCode doctor", () => {
       cwd,
       opencodeConfigPath: configPath,
       adapterPackage: "./prefkit-adapter.ts",
-      env: {},
+      env: { PREFKIT_OPENCODE_VERSION: "1.18.0" },
     });
 
     expect(report.ok).toBe(true);
@@ -69,7 +69,7 @@ describe("OpenCode doctor", () => {
     const report = runOpenCodeDoctor(loadResult(cwd), {
       cwd,
       opencodeConfigPath: configPath,
-      env: {},
+      env: { PREFKIT_OPENCODE_VERSION: "1.18.0" },
     });
 
     expect(report.ok).toBe(false);
@@ -81,7 +81,7 @@ describe("OpenCode doctor", () => {
     const report = runOpenCodeDoctor(loadResult(cwd), {
       cwd,
       opencodeConfigPath: join(cwd, "missing.jsonc"),
-      env: {},
+      env: { PREFKIT_OPENCODE_VERSION: "1.18.0" },
     });
 
     expect(report.ok).toBe(false);
@@ -125,12 +125,33 @@ describe("OpenCode doctor", () => {
     const report = runOpenCodeDoctor(loadResult(cwd), {
       cwd,
       opencodeConfigPath: configPath,
-      env: {},
+      env: { PREFKIT_OPENCODE_VERSION: "2.0.8" },
     });
 
     expect(report.ok).toBe(true);
     expect(check(report, "plugin-entry")?.ok).toBe(true);
     expect(check(report, "opencode-config-style")).toBeUndefined();
+    expect(check(report, "opencode-version")?.ok).toBe(true);
+  });
+
+  it("flags a plugin key that does not match the detected OpenCode major", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "prefkit-opencode-doctor-"));
+    const adapterPath = join(cwd, "adapter-opencode.ts");
+    const configPath = join(cwd, "opencode.jsonc");
+    writeFileSync(adapterPath, "export default {}\n");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ plugin: [["@prefkit/opencode", { enabled: true }]] }),
+    );
+
+    const report = runOpenCodeDoctor(loadResult(cwd), {
+      cwd,
+      opencodeConfigPath: configPath,
+      env: { PREFKIT_OPENCODE_VERSION: "2.0.8" },
+    });
+
+    expect(check(report, "opencode-version")?.ok).toBe(false);
+    expect(check(report, "opencode-version")?.message).toContain("expected plugins");
   });
 
   it("flags object entries under the current plugin key", () => {
@@ -153,7 +174,7 @@ describe("OpenCode doctor", () => {
     const report = runOpenCodeDoctor(loadResult(cwd), {
       cwd,
       opencodeConfigPath: configPath,
-      env: {},
+      env: { PREFKIT_OPENCODE_VERSION: "1.18.0" },
     });
 
     expect(report.ok).toBe(false);

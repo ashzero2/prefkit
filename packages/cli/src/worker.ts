@@ -23,6 +23,44 @@ export interface BackgroundWorkerResult {
   failed: number;
 }
 
+export interface WorkerStatus {
+  running: boolean;
+  ownerPid: number | null;
+  ownerStartedAt: string | null;
+  staleLock: boolean;
+}
+
+export function workerStatus(queueDir: string): WorkerStatus {
+  const lockDir = join(queueDir, lockDirectoryName);
+  if (!existsSync(lockDir)) {
+    return { running: false, ownerPid: null, ownerStartedAt: null, staleLock: false };
+  }
+
+  let ownerPid: number | null = null;
+  let ownerStartedAt: string | null = null;
+  const ownerPath = join(lockDir, ownerFileName);
+  if (existsSync(ownerPath)) {
+    try {
+      const owner = JSON.parse(readFileSync(ownerPath, "utf8")) as Partial<WorkerOwner>;
+      if (typeof owner.pid === "number" && Number.isInteger(owner.pid)) {
+        ownerPid = owner.pid;
+      }
+      if (typeof owner.startedAt === "string") {
+        ownerStartedAt = owner.startedAt;
+      }
+    } catch {
+      // Treat an unreadable owner file as no owner; canReclaimLock decides staleness.
+    }
+  }
+
+  return {
+    running: ownerPid !== null && isProcessAlive(ownerPid),
+    ownerPid,
+    ownerStartedAt,
+    staleLock: canReclaimLock(lockDir),
+  };
+}
+
 interface WorkerOwner {
   pid: number;
   startedAt: string;

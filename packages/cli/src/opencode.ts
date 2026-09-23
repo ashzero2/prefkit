@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,7 @@ interface OpenCodeConfigInspection {
   message?: string;
   entries: OpenCodePluginEntry[];
   disabled: boolean;
+  pluginKeys: Array<"plugin" | "plugins">;
   invalidPluginEntries: string[];
 }
 
@@ -84,6 +86,7 @@ export function runOpenCodeDoctor(
 
   checks.push(...parseChecks(inspections));
   checks.push(...configStyleChecks(inspections));
+  checks.push(...versionChecks(inspections, env));
 
   checks.push({
     name: "plugin-entry",
@@ -306,6 +309,7 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
         message: "Expected the OpenCode config to be a JSON object.",
         entries: [],
         disabled: false,
+        pluginKeys: [],
         invalidPluginEntries: [],
       };
     }
@@ -320,6 +324,7 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
         ok: true,
         entries: [],
         disabled: false,
+        pluginKeys: [],
         invalidPluginEntries: [],
       };
     }
@@ -334,6 +339,10 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
       disabled:
         (hasPluginEntries && disablesPrefKit(pluginEntriesValue)) ||
         (hasPluginsEntries && disablesPrefKit(pluginsEntriesValue)),
+      pluginKeys: [
+        ...(hasPluginEntries ? (["plugin"] as const) : []),
+        ...(hasPluginsEntries ? (["plugins"] as const) : []),
+      ],
       invalidPluginEntries: [...currentPluginEntries.invalidEntries, ...pluginsKeyEntries.invalidEntries],
     };
   } catch (error) {
@@ -343,6 +352,7 @@ function inspectOpenCodeConfig(path: string): OpenCodeConfigInspection {
       message: error instanceof Error ? error.message : String(error),
       entries: [],
       disabled: false,
+      pluginKeys: [],
       invalidPluginEntries: [],
     };
   }
@@ -356,6 +366,63 @@ function parseChecks(inspections: OpenCodeConfigInspection[]): DoctorCheck[] {
       ok: false,
       message: `${inspection.path}: ${inspection.message ?? "could not parse config"}`,
     }));
+}
+
+function versionChecks(inspections: OpenCodeConfigInspection[], env: NodeJS.ProcessEnv): DoctorCheck[] {
+  if (inspections.length === 0) {
+    return [];
+  }
+
+  const majors = detectedOpenCodeMajors(env);
+  if (majors.length === 0) {
+    return [];
+  }
+
+  const keys = new Set(inspections.flatMap((inspection) => inspection.pluginKeys));
+  const expected = [...new Set(majors.map((major) => (major >= 2 ? "plugins" : "plugin")))];
+  const ok = majors.some((major) => keys.has(major >= 2 ? "plugins" : "plugin"));
+  const detected = majors.map((major) => `${major}.x`).join(", ");
+  return [
+    {
+      name: "opencode-version",
+      ok,
+      message: ok
+        ? `Detected OpenCode ${detected}; the config plugin key matches.`
+        : `Detected OpenCode ${detected} but the config has no matching plugin key (expected ${expected.join(" or ")}). Re-run prefkit opencode install.`,
+    },
+  ];
+}
+
+function detectedOpenCodeMajors(env: NodeJS.ProcessEnv): number[] {
+  const override = env.PREFKIT_OPENCODE_VERSION?.trim();
+  const raw = override !== undefined && override.length > 0 ? [override] : readOpenCodeVersions();
+
+  const majors = new Set<number>();
+  for (const value of raw) {
+    const match = /(\d+)/u.exec(value);
+    if (match !== null) {
+      majors.add(Number(match[1]));
+    }
+  }
+  return [...majors];
+}
+
+function readOpenCodeVersions(): string[] {
+  const versions: string[] = [];
+  for (const binary of ["opencode", "opencode2"]) {
+    try {
+      versions.push(
+        execFileSync(binary, ["--version"], {
+          timeout: 2000,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        }),
+      );
+    } catch {
+      // Not installed under this name; try the next candidate.
+    }
+  }
+  return versions;
 }
 
 function configStyleChecks(inspections: OpenCodeConfigInspection[]): DoctorCheck[] {

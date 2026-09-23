@@ -183,5 +183,59 @@
       "contradictions": []
     },
     "expectedStatus": "candidate"
+  },
+  {
+    "name": "repository-scoped correction activates without confirmation",
+    "kind": "confidence",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "explicit_correction",
+      "userPrompt": "No, use pnpm in this repo instead.",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "extraction": {
+      "shouldLearn": true,
+      "statement": "Use pnpm for this repository.",
+      "scopeType": "repository",
+      "scopeValue": "/repo",
+      "category": "tooling",
+      "tags": [],
+      "evidenceType": "USER_EXPLICIT",
+      "polarity": "positive",
+      "proposedStatus": "active",
+      "needsConfirmation": false,
+      "rationale": "The user corrected the package manager in this repository.",
+      "contradictions": []
+    },
+    "expectedStatus": "active"
+  },
+  {
+    "name": "task-scoped guidance stays a candidate",
+    "kind": "confidence",
+    "event": {
+      "agent": "test-agent",
+      "eventType": "user_prompt",
+      "userPrompt": "For this task, use tabs.",
+      "assistantSummary": "",
+      "repoContext": {},
+      "metadata": {}
+    },
+    "extraction": {
+      "shouldLearn": true,
+      "statement": "Use tabs for this task.",
+      "scopeType": "task",
+      "scopeValue": "session-a",
+      "category": "style",
+      "tags": [],
+      "evidenceType": "MODEL_EXTRACTED",
+      "polarity": "positive",
+      "proposedStatus": "active",
+      "needsConfirmation": false,
+      "rationale": "The user described a one-task style choice.",
+      "contradictions": []
+    },
+    "expectedStatus": "candidate"
   }
 ]

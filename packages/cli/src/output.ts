@@ -70,8 +70,15 @@ export function printOutcomeEvaluation(evaluation: ReturnType<PreferenceStore["e
   printEvaluationGroup("withoutContext", evaluation.withoutContext);
   console.log(`absoluteRateDifference=${formatRate(evaluation.absoluteRateDifference)}`);
   console.log(`relativeRateDifference=${formatRate(evaluation.relativeRateDifference)}`);
+  if (evaluation.completedSessions < minEvaluationSessions) {
+    console.log(
+      `note=Small sample (${evaluation.completedSessions} closed sessions, want >= ${minEvaluationSessions}); treat the difference as directional only.`,
+    );
+  }
   console.log("note=Rates use explicitly closed session outcomes; silence is not treated as prevention.");
 }
+
+const minEvaluationSessions = 20;
 
 function printEvaluationGroup(
   label: string,
@@ -80,6 +87,22 @@ function printEvaluationGroup(
   console.log(`${label}.sessions=${group.sessions}`);
   console.log(`${label}.corrections=${group.corrections}`);
   console.log(`${label}.correctionRate=${formatRate(group.correctionRate)}`);
+  const interval = wilsonInterval(group.corrections, group.sessions);
+  if (interval !== null) {
+    console.log(`${label}.correctionRate95ci=${interval[0].toFixed(4)}..${interval[1].toFixed(4)}`);
+  }
+}
+
+function wilsonInterval(successes: number, total: number): [number, number] | null {
+  if (total === 0) {
+    return null;
+  }
+  const z = 1.96;
+  const phat = successes / total;
+  const denominator = 1 + (z * z) / total;
+  const centre = (phat + (z * z) / (2 * total)) / denominator;
+  const margin = (z * Math.sqrt((phat * (1 - phat)) / total + (z * z) / (4 * total * total))) / denominator;
+  return [Math.max(0, centre - margin), Math.min(1, centre + margin)];
 }
 
 function formatRate(value: number | null): string {
@@ -119,6 +142,8 @@ Usage:
     Successful and skipped events move to queue/processed; exhausted failures move to queue/failed.
   prefkit worker [--queue-dir ~/.prefkit/queue] [--interval-ms 5000] [--batch-size 1] [--once]
     Watches the queue and persists learning events in the background. One worker runs per queue.
+  prefkit worker status [--queue-dir ~/.prefkit/queue]
+    Reports the lock owner, queue depth, and the worker log path.
   prefkit doctor [--config .prefkit.json]
   prefkit opencode install [--write] [--opencode-config opencode.jsonc]
   prefkit opencode doctor [--opencode-config opencode.jsonc]
